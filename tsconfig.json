@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext", // Considere "CommonJS" se você não estiver usando um setup ESM no backend
+    "lib": ["DOM", "ESNext"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "moduleResolution": "node", // Ou "bundler" se estiver usando Vite para o backend também
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["client/src/*"],
+      "@shared/*": ["shared/*"]
+    },
+    // ADICIONADO: Garante que o TypeScript procure tipos customizados aqui
+    "typeRoots": [
+      "./node_modules/@types",
+      "./server/src/types" // Caminho para a pasta que contém 'express/index.d.ts'
+    ]
+  },
+  "include": [
+    "shared/**/*",
+    "client/src/**/*",
+    "server/index.ts",      // ADICIONADO: Inclui o server/index.ts principal
+    "server/src/**/*.ts",   // AJUSTADO: Garante que todos .ts em server/src sejam incluídos
+    "server/src/**/*.d.ts"  // ADICIONADO: Garante que arquivos de definição em server/src sejam incluídos
+  ],
+  "exclude": ["node_modules"]
+}

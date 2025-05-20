@@ -1,0 +1,16 @@
+image: node:18
+
+tasks:
+  - name: Instalar dependências
+    init: |
+      npm install
+      cd client && npm install
+    command: npm run dev
+
+ports:
+  - port: 5000
+    onOpen: ignore
+    visibility: public
+  - port: 5173
+    onOpen: open-preview
+    visibility: public
