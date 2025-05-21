@@ -1,0 +1,3691 @@
+
+==== ./server/src/routes/activityLogsRoutes.ts ====
+
+// server/src/routes/activityLogsRoutes.ts
+import express, { Response, NextFunction } from 'express';
+import { authenticateToken, AuthenticatedRequest } from '../../middlewares/authenticateToken';
+// Futuramente, você importaria seu modelo ActivityLog aqui
+// import ActivityLog from '../../models/ActivityLog'; 
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/activityLogsRoutes.ts] Ficheiro carregado ---");
+
+// GET /api/activity-logs - Placeholder
+router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const trainerId = req.user?.id;
+    const limitParam = req.query.limit;
+    const limit = typeof limitParam === 'string' && parseInt(limitParam) > 0 ? parseInt(limitParam) : 5; // Padrão de 5 se não especificado
+
+    if (!trainerId) {
+        return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    }
+
+    console.log(`[GET /api/activity-logs] (Placeholder) Buscando logs para trainerId: ${trainerId} com limite: ${limit}`);
+
+    try {
+        // TODO: Implementar a lógica real para buscar logs de atividade do banco de dados
+        // Por enquanto, retorna um array vazio para evitar o erro 404 no frontend.
+        const mockActivities: any[] = [
+            // Exemplo de dados mockados, se quiser testar a UI com algo:
+            // { id: '1', activityType: 'student-added', details: { name: 'Aluno Teste 1' }, timestamp: new Date().toISOString() },
+            // { id: '2', activityType: 'workout-created', details: { name: 'Treino Peito Intenso' }, timestamp: new Date(Date.now() - 3600000).toISOString() },
+        ];
+        
+        res.json(mockActivities);
+
+    } catch (error) {
+        console.error("[GET /api/activity-logs] (Placeholder) Erro:", error);
+        next(error);
+    }
+});
+
+export default router;
+==== ./server/src/routes/adminRoutes.ts ====
+
+// server/src/routes/adminRoutes.ts
+import express, { Response, NextFunction, Request } from 'express';
+import mongoose from 'mongoose';
+import crypto from 'crypto'; // Para gerar tokens de convite
+import PersonalTrainer from '../../models/PersonalTrainer';
+import ConvitePersonal, { IConvitePersonal } from '../../models/ConvitePersonal'; // Importar o modelo de Convite
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/adminRoutes.ts] Ficheiro carregado (com gestão de personais e convites) ---");
+
+// --- ROTAS DE GESTÃO DE PERSONAL TRAINERS ---
+
+// Rota: POST /api/admin/personal-trainers - Admin cria um novo Personal Trainer.
+router.post('/personal-trainers', async (req: Request, res: Response, next: NextFunction) => {
+  const { nome, email, password, role: personalRoleInput } = req.body;
+  // req.user virá da definição global em express.d.ts
+  console.log(`[POST /api/admin/personal-trainers] Admin (ID: ${req.user?.id}) tentando criar personal. Email: ${email}`);
+
+  if (!nome || !email || !password) {
+    return res.status(400).json({ mensagem: "Nome, email e senha são obrigatórios para criar um personal." });
+  }
+
+  const roleFinal = (personalRoleInput && ['Personal Trainer', 'Admin'].includes(personalRoleInput))
+                    ? personalRoleInput
+                    : 'Personal Trainer';
+
+  try {
+    const existingPersonal = await PersonalTrainer.findOne({ email: email.toLowerCase() });
+    if (existingPersonal) {
+      return res.status(409).json({ mensagem: `Já existe um usuário com o email: ${email}` });
+    }
+
+    const newPersonal = new PersonalTrainer({
+      nome,
+      email: email.toLowerCase(),
+      passwordHash: password,
+      role: roleFinal,
+    });
+
+    await newPersonal.save();
+
+    const personalToReturn = {
+      _id: newPersonal._id,
+      nome: newPersonal.nome,
+      email: newPersonal.email,
+      role: newPersonal.role,
+      tokenCadastroAluno: newPersonal.tokenCadastroAluno,
+      createdAt: newPersonal.createdAt,
+      updatedAt: newPersonal.updatedAt,
+      statusAssinatura: newPersonal.statusAssinatura,
+      limiteAlunos: newPersonal.limiteAlunos,
+      planoId: newPersonal.planoId,
+      dataInicioAssinatura: newPersonal.dataInicioAssinatura,
+      dataFimAssinatura: newPersonal.dataFimAssinatura
+    };
+
+    console.log(`[POST /api/admin/personal-trainers] Personal ID: ${newPersonal._id} (${newPersonal.email}) criado com sucesso pelo Admin ID: ${req.user?.id}.`);
+    res.status(201).json(personalToReturn);
+
+  } catch (error: any) {
+    console.error(`[POST /api/admin/personal-trainers] Erro ao criar personal:`, error);
+    if (error.name === 'ValidationError') {
+      const mensagens = Object.values(error.errors).map((el: any) => el.message);
+      return res.status(400).json({ mensagem: mensagens.join(', ') });
+    }
+    next(error);
+  }
+});
+
+// Rota: GET /api/admin/personal-trainers - Listar todos os Personal Trainers
+router.get('/personal-trainers', async (req: Request, res: Response, next: NextFunction) => {
+  console.log(`[GET /api/admin/personal-trainers] Admin (ID: ${req.user?.id}) listando todos os personal trainers.`);
+  try {
+    const personais = await PersonalTrainer.find()
+      .select('-passwordHash')
+      .sort({ createdAt: -1 });
+    res.status(200).json(personais);
+  } catch (error: any) {
+    console.error(`[GET /api/admin/personal-trainers] Erro ao listar personais:`, error);
+    next(error);
+  }
+});
+
+// Rota: GET /api/admin/personal-trainers/:id - Obter um Personal Trainer específico por ID
+router.get('/personal-trainers/:id', async (req: Request, res: Response, next: NextFunction) => {
+  const { id: personalId } = req.params;
+  const adminId = req.user?.id;
+  console.log(`[GET /api/admin/personal-trainers/${personalId}] Admin (ID: ${adminId}) tentando obter personal.`);
+
+  if (!mongoose.isValidObjectId(personalId)) {
+    return res.status(400).json({ mensagem: "ID do personal inválido." });
+  }
+
+  try {
+    const personal = await PersonalTrainer.findById(personalId).select('-passwordHash');
+    if (!personal) {
+      return res.status(404).json({ mensagem: "Personal trainer não encontrado." });
+    }
+    const personalToReturn = {
+        _id: personal._id,
+        nome: personal.nome,
+        email: personal.email,
+        role: personal.role,
+        tokenCadastroAluno: personal.tokenCadastroAluno,
+        createdAt: personal.createdAt,
+        updatedAt: personal.updatedAt,
+        statusAssinatura: personal.statusAssinatura,
+        limiteAlunos: personal.limiteAlunos,
+        planoId: personal.planoId,
+        dataInicioAssinatura: personal.dataInicioAssinatura,
+        dataFimAssinatura: personal.dataFimAssinatura
+      };
+    res.status(200).json(personalToReturn);
+  } catch (error: any) {
+    console.error(`[GET /api/admin/personal-trainers/${personalId}] Erro ao obter personal:`, error);
+    next(error);
+  }
+});
+
+// Rota: DELETE /api/admin/personal-trainers/:id - Excluir um Personal Trainer
+router.delete('/personal-trainers/:id', async (req: Request, res: Response, next: NextFunction) => {
+  const { id: personalIdToDelete } = req.params;
+  const adminId = req.user?.id;
+  console.log(`[DELETE /api/admin/personal-trainers/${personalIdToDelete}] Admin (ID: ${adminId}) tentando excluir personal.`);
+
+  if (!mongoose.isValidObjectId(personalIdToDelete)) {
+    return res.status(400).json({ mensagem: "ID do personal inválido." });
+  }
+  if (personalIdToDelete === adminId) {
+     return res.status(403).json({ mensagem: "Administradores não podem se auto-excluir por esta rota." });
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const personal = await PersonalTrainer.findById(personalIdToDelete).session(session);
+    if (!personal) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ mensagem: "Personal trainer não encontrado." });
+    }
+    await PersonalTrainer.findByIdAndDelete(personalIdToDelete, { session });
+    await session.commitTransaction();
+    console.log(`[DELETE /api/admin/personal-trainers/${personalIdToDelete}] Personal ${personal.email} excluído com sucesso pelo Admin ID: ${adminId}.`);
+    res.status(200).json({ mensagem: `Personal trainer ${personal.nome} (${personal.email}) excluído com sucesso.` });
+  } catch (error: any) {
+    if (session.inTransaction()) {
+        await session.abortTransaction();
+    }
+    console.error(`[DELETE /api/admin/personal-trainers/${personalIdToDelete}] Erro ao excluir personal:`, error);
+    next(error);
+  } finally {
+    session.endSession();
+  }
+});
+
+
+// --- ROTAS DE GESTÃO DE CONVITES PARA PERSONAL TRAINERS ---
+
+// Rota: POST /api/admin/convites/personal - Admin cria um novo convite para Personal Trainer
+router.post('/convites/personal', async (req: Request, res: Response, next: NextFunction) => {
+  const adminId = req.user?.id; // ID do admin logado
+  const { emailConvidado, roleConvidado, diasParaExpirar } = req.body;
+
+  console.log(`[POST /api/admin/convites/personal] Admin (ID: ${adminId}) criando convite. Email: ${emailConvidado}, Role: ${roleConvidado}`);
+
+  if (!adminId) {
+    return res.status(401).json({ mensagem: "Administrador não autenticado." });
+  }
+
+  try {
+    const token = crypto.randomBytes(20).toString('hex');
+    const dataExpiracao = new Date();
+    const diasValidade = diasParaExpirar && !isNaN(parseInt(diasParaExpirar)) ? parseInt(diasParaExpirar) : 7;
+    dataExpiracao.setDate(dataExpiracao.getDate() + diasValidade);
+
+    const novoConvite = new ConvitePersonal({
+      token,
+      emailConvidado: emailConvidado?.toLowerCase().trim(),
+      roleConvidado: roleConvidado || 'Personal Trainer',
+      status: 'pendente',
+      dataExpiracao,
+      criadoPor: new mongoose.Types.ObjectId(adminId),
+    });
+
+    await novoConvite.save();
+
+    // Construir o link de convite (exemplo)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'; // Certifique-se de ter essa variável de ambiente
+    const linkConvite = `${frontendUrl}/cadastrar-personal/convite/${token}`;
+
+    console.log(`[POST /api/admin/convites/personal] Convite criado com token: ${token} para ${emailConvidado || 'qualquer email'}. Link: ${linkConvite}`);
+    res.status(201).json({
+      mensagem: "Convite criado com sucesso!",
+      convite: novoConvite,
+      linkConvite: linkConvite, // Envia o link para o frontend
+    });
+
+  } catch (error: any) {
+    console.error(`[POST /api/admin/convites/personal] Erro ao criar convite:`, error);
+    if (error.name === 'ValidationError') {
+      const mensagens = Object.values(error.errors).map((el: any) => el.message);
+      return res.status(400).json({ mensagem: mensagens.join(', ') });
+    }
+    next(error);
+  }
+});
+
+// Rota: GET /api/admin/convites/personal - Listar todos os convites
+router.get('/convites/personal', async (req: Request, res: Response, next: NextFunction) => {
+  const adminId = req.user?.id;
+  console.log(`[GET /api/admin/convites/personal] Admin (ID: ${adminId}) listando convites.`);
+
+  if (!adminId) {
+    return res.status(401).json({ mensagem: "Administrador não autenticado." });
+  }
+
+  try {
+    const convites = await ConvitePersonal.find({ criadoPor: new mongoose.Types.ObjectId(adminId) })
+      .populate('usadoPor', 'nome email') // Popula quem usou o convite
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(convites);
+  } catch (error: any) {
+    console.error(`[GET /api/admin/convites/personal] Erro ao listar convites:`, error);
+    next(error);
+  }
+});
+
+// Rota: DELETE /api/admin/convites/personal/:conviteId - Revogar/Excluir um convite
+router.delete('/convites/personal/:conviteId', async (req: Request, res: Response, next: NextFunction) => {
+  const adminId = req.user?.id;
+  const { conviteId } = req.params;
+
+  console.log(`[DELETE /api/admin/convites/personal/${conviteId}] Admin (ID: ${adminId}) tentando revogar convite.`);
+
+  if (!adminId) {
+    return res.status(401).json({ mensagem: "Administrador não autenticado." });
+  }
+  if (!mongoose.isValidObjectId(conviteId)) {
+    return res.status(400).json({ mensagem: "ID do convite inválido." });
+  }
+
+  try {
+    const convite = await ConvitePersonal.findOneAndDelete({
+      _id: new mongoose.Types.ObjectId(conviteId),
+      criadoPor: new mongoose.Types.ObjectId(adminId),
+      status: 'pendente', // Só permite excluir convites pendentes, por exemplo
+    });
+
+    if (!convite) {
+      return res.status(404).json({ mensagem: "Convite não encontrado, já utilizado, expirado ou não pertence a este administrador." });
+    }
+
+    console.log(`[DELETE /api/admin/convites/personal/${conviteId}] Convite (Token: ${convite.token}) revogado com sucesso.`);
+    res.status(200).json({ mensagem: "Convite revogado com sucesso." });
+
+  } catch (error: any) {
+    console.error(`[DELETE /api/admin/convites/personal/${conviteId}] Erro ao revogar convite:`, error);
+    next(error);
+  }
+});
+
+
+export default router;
+
+==== ./server/src/routes/alunoApiRoutes.ts ====
+
+// server/src/routes/alunoApiRoutes.ts
+import express, { Response } from 'express';
+import mongoose, { Types } from 'mongoose';
+import Treino, { 
+    ITreinoPopuladoLean,
+    ITreino 
+} from '../../models/Treino'; 
+import Sessao, { 
+    ISessaoDocument, 
+    OPCOES_PSE, 
+    OpcaoPSE 
+} from '../../models/Sessao'; 
+import { AuthenticatedAlunoRequest } from '../../middlewares/authenticateAlunoToken';
+import { startOfWeek, endOfWeek } from 'date-fns'; 
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/alunoApiRoutes.ts] Ficheiro carregado (CORREÇÕES TS v4 em PATCH toggle) ---");
+
+// --- Rotas GET /meus-treinos e GET /minhas-rotinas/:rotinaId (sem alterações desta vez) ---
+router.get('/meus-treinos', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+    const alunoId = req.aluno?.id;
+    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' }); 
+    try {
+        const alunoObjectId = new Types.ObjectId(alunoId);
+        let query = Treino.find({ alunoId: alunoObjectId, tipo: 'individual' })
+                          .sort({ atualizadoEm: -1, criadoEm: -1 }); 
+        query = query.populate({ path: 'criadorId', select: 'nome email _id' });
+        query = query.populate({
+            path: 'diasDeTreino.exerciciosDoDia.exercicioId', 
+            select: 'nome grupoMuscular urlVideo tipo categoria descricao _id' 
+        });
+        const rotinasDoAluno = await query.lean<ITreinoPopuladoLean[]>();
+        res.status(200).json(rotinasDoAluno);
+    } catch (error) { 
+        next(error); 
+    }
+});
+
+router.get('/minhas-rotinas/:rotinaId', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+    const alunoId = req.aluno?.id;
+    const { rotinaId } = req.params; 
+    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
+    if (!mongoose.Types.ObjectId.isValid(rotinaId)) return res.status(400).json({ message: 'ID da rotina inválido.' });
+    try {
+        const alunoObjectId = new Types.ObjectId(alunoId);
+        const rotinaObjectId = new Types.ObjectId(rotinaId);
+        let query = Treino.findOne({ _id: rotinaObjectId, alunoId: alunoObjectId, tipo: 'individual' });
+        query = query.populate({ path: 'criadorId', select: 'nome email _id' });
+        query = query.populate({
+            path: 'diasDeTreino.exerciciosDoDia.exercicioId',
+            select: 'nome grupoMuscular urlVideo tipo categoria descricao _id'
+        });
+        const rotina = await query.lean<ITreinoPopuladoLean | null>();
+        if (!rotina) return res.status(404).json({ message: 'Rotina de treino não encontrada ou acesso não permitido.' });
+        res.status(200).json(rotina);
+    } catch (error) { 
+        next(error); 
+    }
+});
+
+// Rota: PATCH /api/aluno/rotinas/:rotinaId/dias/:diaId/exercicios/:exercicioDiaId/toggle-concluido
+router.patch('/rotinas/:rotinaId/dias/:diaId/exercicios/:exercicioDiaId/toggle-concluido', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+    const alunoId = req.aluno?.id;
+    const { rotinaId, diaId, exercicioDiaId } = req.params;
+
+    if (!alunoId) return res.status(401).json({ message: "Aluno não autenticado." });
+    if (!Types.ObjectId.isValid(rotinaId) || 
+        !Types.ObjectId.isValid(diaId) ||    
+        !Types.ObjectId.isValid(exercicioDiaId)) { 
+        return res.status(400).json({ message: "IDs inválidos fornecidos."});
+    }
+    
+    const mongoSession = await mongoose.startSession();
+    try {
+        mongoSession.startTransaction();
+        const alunoObjectId = new Types.ObjectId(alunoId);
+        const rotinaObjectId = new Types.ObjectId(rotinaId);
+        const diaObjectIdString = diaId; // Manter como string para comparação
+        const exercicioObjectIdString = exercicioDiaId; // Manter como string para comparação
+
+        const rotina: ITreino | null = await Treino.findOne({ 
+            _id: rotinaObjectId, 
+            alunoId: alunoObjectId,
+            // A query para encontrar o dia e exercício exato é mais eficiente no Mongoose
+            // usando o operador $elemMatch ou atualizando diretamente com operadores posicionais.
+            // No entanto, para a lógica de encontrar e modificar no código, vamos carregar
+            // a rotina se ela contiver o dia (a verificação do exercício será feita no loop).
+            "diasDeTreino._id": new Types.ObjectId(diaObjectIdString),
+        }).session(mongoSession).exec();
+
+        if (!rotina) {
+            await mongoSession.abortTransaction();
+            return res.status(404).json({ message: "Rotina ou dia de treino não encontrado para este aluno." });
+        }
+
+        let exercicioAtualizadoView; 
+        let foiModificado = false;
+
+        // Iterar para encontrar e modificar o exercício específico
+        for (const dia of rotina.diasDeTreino) {
+            // dia._id é um mongoose.Types.ObjectId aqui. Comparamos sua string.
+            if (dia._id && dia._id.toString() === diaObjectIdString) { 
+                for (const ex of dia.exerciciosDoDia) {
+                    // ex._id é um mongoose.Types.ObjectId aqui. Comparamos sua string.
+                    if (ex._id && ex._id.toString() === exercicioObjectIdString) { 
+                        ex.concluido = !ex.concluido;
+                        exercicioAtualizadoView = ex.toObject(); 
+                        foiModificado = true;
+                        break; 
+                    }
+                }
+            }
+            if (foiModificado) break; 
+        }
+        
+        if (!foiModificado) {
+            await mongoSession.abortTransaction();
+            return res.status(404).json({ message: "Exercício específico não encontrado para toggle dentro do dia e rotina especificados." });
+        }
+
+        await rotina.save({ session: mongoSession });
+        await mongoSession.commitTransaction();
+        
+        console.log(`[PATCH /toggle-concluido] Exercicio ${exercicioDiaId} na rotina ${rotinaId}, dia ${diaId} atualizado para concluido: ${exercicioAtualizadoView?.concluido}.`);
+        res.status(200).json({ 
+            message: 'Status do exercício atualizado.', 
+            concluido: exercicioAtualizadoView?.concluido 
+        });
+
+    } catch (error) {
+        if (mongoSession.inTransaction()) await mongoSession.abortTransaction();
+        console.error("[PATCH /toggle-concluido] Erro:", error);
+        next(error);
+    } finally {
+        await mongoSession.endSession();
+    }
+});
+
+
+// --- Outras Rotas (sem alterações nesta rodada) ---
+// ... (GET /minhas-sessoes-concluidas-na-semana, GET /minhas-sessoes-agendadas, PATCH /sessoes/:sessaoId/concluir, GET /meu-historico-sessoes)
+// As rotas abaixo permanecem como na versão anterior (v3)
+
+router.get('/minhas-sessoes-concluidas-na-semana', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+    const alunoId = req.aluno?.id;
+    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
+    try {
+        const alunoObjectId = new Types.ObjectId(alunoId);
+        const hoje = new Date();
+        const inicioDaSemana = startOfWeek(hoje, { weekStartsOn: 1 }); 
+        const fimDaSemana = endOfWeek(hoje, { weekStartsOn: 1 });
+        const sessoesConcluidas = await Sessao.find({
+            alunoId: alunoObjectId, status: 'completed',
+            sessionDate: { $gte: inicioDaSemana, $lte: fimDaSemana },
+        }).select('_id sessionDate tipoCompromisso status concluidaEm pseAluno comentarioAluno rotinaId diaDeTreinoIdentificador')
+          .sort({ sessionDate: 1 })
+          .lean();
+        res.status(200).json(sessoesConcluidas);
+    } catch (error) { next(error); }
+});
+
+router.get('/minhas-sessoes-agendadas', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+    const alunoId = req.aluno?.id;
+    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
+    try {
+        const alunoObjectId = new Types.ObjectId(alunoId);
+        const hoje = new Date();
+        const inicioDeHoje = new Date(hoje.setHours(0, 0, 0, 0)); 
+        const sessoesAgendadas = await Sessao.find({
+            alunoId: alunoObjectId, status: { $in: ['pending', 'confirmed'] },
+            sessionDate: { $gte: inicioDeHoje },
+        })
+        .populate<{ rotinaId: Pick<ITreinoPopuladoLean, 'titulo' | '_id'> | null }>({ path: 'rotinaId', select: 'titulo _id' })
+        .populate<{ personalId: { _id: string, nome: string } | null }>({ path: 'personalId', select: 'nome _id' })
+        .sort({ sessionDate: 1 }).limit(5) 
+        .lean<any[]>(); 
+        res.status(200).json(sessoesAgendadas);
+    } catch (error) { next(error); }
+});
+
+router.patch('/sessoes/:sessaoId/concluir', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+    const alunoIdAutenticado = req.aluno?.id;
+    const { sessaoId } = req.params;
+    const { pseAluno, comentarioAluno } = req.body as { pseAluno?: OpcaoPSE, comentarioAluno?: string };
+
+    if (!alunoIdAutenticado) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
+    if (!mongoose.Types.ObjectId.isValid(sessaoId)) return res.status(400).json({ message: 'ID da sessão inválido.' });
+    if (pseAluno && !OPCOES_PSE.includes(pseAluno)) return res.status(400).json({ message: `Valor de PSE inválido.` });
+    
+    const mongoTransactionSession = await mongoose.startSession();
+    try {
+        mongoTransactionSession.startTransaction();
+        const alunoObjectId = new Types.ObjectId(alunoIdAutenticado);
+        const sessaoObjectId = new Types.ObjectId(sessaoId);
+        
+        const sessao: ISessaoDocument | null = await Sessao.findOne({ _id: sessaoObjectId, alunoId: alunoObjectId }).session(mongoTransactionSession);
+        if (!sessao) {
+            await mongoTransactionSession.abortTransaction();
+            return res.status(404).json({ message: 'Sessão não encontrada ou acesso não permitido.' });
+        }
+
+        let jaEstavaConcluida = sessao.status === 'completed';
+        if (!jaEstavaConcluida) {
+            sessao.status = 'completed';
+            sessao.concluidaEm = new Date(); 
+        }
+        
+        if (pseAluno !== undefined) sessao.pseAluno = pseAluno || null;
+        if (comentarioAluno !== undefined) sessao.comentarioAluno = comentarioAluno.trim() === '' ? null : comentarioAluno.trim();
+        await sessao.save({ session: mongoTransactionSession });
+
+        if (!jaEstavaConcluida && sessao.rotinaId) { 
+            const rotina: ITreino | null = await Treino.findById(sessao.rotinaId).session(mongoTransactionSession);
+            if (rotina) {
+                if (rotina.alunoId && typeof rotina.alunoId.toString === 'function' && rotina.alunoId.toString() !== alunoIdAutenticado) {
+                    await mongoTransactionSession.abortTransaction();
+                    return res.status(403).json({ message: "Acesso negado para modificar esta rotina." });
+                }
+                rotina.sessoesRotinaConcluidas = (rotina.sessoesRotinaConcluidas || 0) + 1;
+                await rotina.save({ session: mongoTransactionSession });
+            }
+        }
+        
+        await mongoTransactionSession.commitTransaction();
+        const respostaSessaoConcluida = { ...sessao.toObject() };
+        
+        if (jaEstavaConcluida) {
+            res.status(200).json({ message: 'Feedback da sessão atualizado.', sessao: respostaSessaoConcluida });
+        } else {
+            res.status(200).json(respostaSessaoConcluida);
+        }
+    } catch (error) {
+        if (mongoTransactionSession.inTransaction()) await mongoTransactionSession.abortTransaction();
+        next(error);
+    } finally {
+        await mongoTransactionSession.endSession();
+    }
+});
+
+router.get('/meu-historico-sessoes', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+    const alunoId = req.aluno?.id;
+    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+    try {
+        const alunoObjectId = new Types.ObjectId(alunoId);
+        const queryConditions = { alunoId: alunoObjectId, status: 'completed' }; 
+        const sessoesQuery = Sessao.find(queryConditions)
+            .populate<{ rotinaId: Pick<ITreinoPopuladoLean, 'titulo' | '_id'> | null }>({ path: 'rotinaId', select: 'titulo _id' })
+            .populate<{ personalId: { _id: string, nome: string } | null }>({ path: 'personalId', select: 'nome _id' })
+            .sort({ concluidaEm: -1, sessionDate: -1 })
+            .skip(skip).limit(limit)
+            .lean<any[]>(); 
+        const totalSessoesQuery = Sessao.countDocuments(queryConditions);
+        const [sessoes, totalSessoes] = await Promise.all([sessoesQuery, totalSessoesQuery]);
+        const totalPages = Math.ceil(totalSessoes / limit);
+        res.status(200).json({ sessoes, currentPage: page, totalPages, totalSessoes });
+    } catch (error) {
+        next(error);
+    }
+});
+
+export default router;
+==== ./server/src/routes/alunos.ts ====
+
+// server/src/routes/alunos.ts
+import express, { Request, Response } from "express";
+import mongoose from "mongoose";
+import Aluno from "../../models/Aluno";
+import crypto from 'crypto'; // Para gerar senhas temporárias
+
+// Não precisamos importar AuthenticatedRequest se express.d.ts estiver funcionando globalmente
+// import { AuthenticatedRequest } from '../../middlewares/authenticateToken'; 
+
+console.log("--- [server/src/routes/alunos.ts] Ficheiro carregado (com geração de senha temp e verificação de email duplicado) ---");
+
+const router = express.Router();
+
+// --- ROTAS ---
+
+// POST /api/alunos - Cadastrar novo aluno
+router.post("/", async (req: Request, res: Response) => {
+  console.log("--- ROTA POST /api/alunos ATINGIDA ---");
+  console.log("📦 Dados recebidos para cadastro:", req.body);
+  try {
+    const {
+      nome, email, birthDate, gender, goal, weight, height, startDate,
+      phone, status, notes, trainerId // trainerId deve ser o ID do personal logado
+    } = req.body;
+
+    // Validação adicional: Verificar se o trainerId foi fornecido e é válido
+    if (!trainerId || !mongoose.Types.ObjectId.isValid(trainerId)) {
+      return res.status(400).json({ erro: "ID do treinador (trainerId) inválido ou não fornecido." });
+    }
+    // Validação adicional: Verificar se o trainerId corresponde ao usuário logado (se não for admin)
+    // req.user é populado pelo authenticateToken
+    if (req.user && req.user.role === 'Personal Trainer' && req.user.id !== trainerId) {
+      return res.status(403).json({ erro: "Personal Trainers só podem cadastrar alunos para si mesmos." });
+    }
+
+    // Verificar se já existe um aluno com este email
+    const existingAluno = await Aluno.findOne({ email: email.toLowerCase() });
+    if (existingAluno) {
+      return res.status(409).json({ erro: `Já existe um aluno cadastrado com o email: ${email}` });
+    }
+
+    // Gerar uma senha temporária para o aluno
+    // O hook pre-save no modelo Aluno cuidará do hashing
+    const temporaryPassword = crypto.randomBytes(8).toString('hex'); // Gera uma string hexadecimal de 16 caracteres
+
+    const novoAluno = new Aluno({
+      nome,
+      email: email.toLowerCase(), // Garante que o email seja salvo em minúsculas
+      passwordHash: temporaryPassword, // Senha temporária que será hasheada
+      birthDate,
+      gender,
+      goal,
+      weight,
+      height,
+      startDate,
+      phone,
+      status,
+      notes,
+      trainerId
+    });
+
+    const alunoSalvo = await novoAluno.save();
+    console.log(`✅ Aluno salvo: ${alunoSalvo.email} com senha temporária.`);
+
+    // IMPORTANTE: Não retorne a senha temporária (nem o hash) para o cliente.
+    // O aluno deverá ter um fluxo para definir sua própria senha (ex: "esqueci minha senha" ou primeiro login).
+    const alunoParaRetornar = { ...alunoSalvo.toObject() };
+    delete alunoParaRetornar.passwordHash; // Remove o hash da senha da resposta
+
+    res.status(201).json(alunoParaRetornar);
+
+  } catch (error: any) {
+    console.error("❌ Erro ao cadastrar aluno:", error);
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        erro: "Dados inválidos para cadastro",
+        detalhes: error.errors
+      });
+    }
+    // Tratamento de erro duplicado caso a verificação findOne falhe por alguma race condition
+    if (error.code === 11000 && error.keyPattern?.email) {
+        return res.status(409).json({ erro: `Já existe um aluno cadastrado com o email: ${req.body.email}` });
+    }
+    res.status(500).json({
+      erro: "Erro interno ao cadastrar aluno",
+      detalhes: error?.message || error
+    });
+  }
+});
+
+// GET /api/alunos - Listar alunos
+// MODIFICADO: Agora filtra alunos pelo trainerId do personal logado
+// ou mostra todos se for Admin.
+router.get("/", async (req: Request, res: Response) => {
+  console.log("--- ROTA GET /api/alunos ATINGIDA (FILTRANDO POR PERSONAL/ADMIN) ---");
+  
+  try {
+    const user = req.user;
+
+    if (!user || !user.id) {
+      return res.status(401).json({ erro: "Usuário não autenticado corretamente." });
+    }
+
+    let query = {};
+
+    if (user.role === 'Personal Trainer') {
+      console.log(`   -> Personal Trainer ID: ${user.id} buscando seus alunos.`);
+      query = { trainerId: user.id };
+    } else if (user.role === 'Admin') {
+      console.log(`   -> Admin ID: ${user.id} buscando todos os alunos.`);
+    } else {
+      console.warn(`   -> Usuário com role não reconhecida ('${user.role}') tentando listar alunos.`);
+      return res.status(403).json({ erro: "Acesso não permitido para esta funcionalidade." });
+    }
+
+    const alunos = await Aluno.find(query).sort({ nome: 1 }).select('-passwordHash'); // Não retorna passwordHash
+    console.log(`   -> Encontrados ${alunos.length} alunos.`);
+    res.status(200).json(alunos);
+
+  } catch (error: any) {
+    console.error("❌ Erro ao buscar alunos:", error);
+    res.status(500).json({ erro: "Erro interno ao buscar alunos", detalhes: error?.message || error });
+  }
+});
+
+// GET /api/alunos/:id - Buscar um aluno pelo ID 
+router.get("/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = req.user;
+
+  console.log(`--- ROTA GET /api/alunos/${id} ATINGIDA ---`);
+  
+  if (!user || !user.id) {
+    return res.status(401).json({ erro: "Usuário não autenticado corretamente." });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+     console.log(`   -> ID de aluno inválido fornecido: ${id}`);
+     return res.status(400).json({ erro: "ID do aluno inválido" }); 
+  }
+
+  try {
+    let query: mongoose.FilterQuery<any> = { _id: id };
+
+    if (user.role === 'Personal Trainer') {
+      query.trainerId = user.id;
+    }
+
+    const aluno = await Aluno.findOne(query).select('-passwordHash'); // Não retorna passwordHash
+
+    if (!aluno) {
+      console.log(`   -> Aluno com ID ${id} não encontrado ou não pertence a este personal.`);
+      return res.status(404).json({ erro: "Aluno não encontrado" });
+    }
+
+    console.log(`   -> Aluno encontrado:`, aluno);
+    res.status(200).json(aluno);
+
+  } catch (error: any) {
+     console.error(`❌ Erro ao buscar aluno ${id}:`, error);
+     res.status(500).json({ erro: "Erro interno ao buscar aluno", detalhes: error?.message || error });
+  }
+});
+
+
+// PUT /api/alunos/:id - Editar aluno 
+router.put("/:id", async (req: Request, res: Response) => {
+   const { id } = req.params;
+   const user = req.user;
+   console.log(`--- ROTA PUT /api/alunos/${id} ATINGIDA ---`);
+   console.log("📦 Dados recebidos para atualização:", req.body);
+
+   if (!user || !user.id) {
+     return res.status(401).json({ erro: "Usuário não autenticado corretamente." });
+   }
+   if (!mongoose.Types.ObjectId.isValid(id)) {
+     console.log(`   -> ID inválido para atualização: ${id}`);
+     return res.status(400).json({ erro: "ID do aluno inválido" }); 
+   }
+
+  try {
+    const updateData = { ...req.body };
+    // Nunca permitir atualização direta do passwordHash ou trainerId (exceto por admin em rota específica)
+    delete updateData.passwordHash;
+    if (user.role === 'Personal Trainer') {
+        delete updateData.trainerId; // Personal não pode mudar o trainerId de um aluno
+    }
+
+
+    let query: mongoose.FilterQuery<any> = { _id: id };
+    if (user.role === 'Personal Trainer') {
+      query.trainerId = user.id;
+    }
+    
+    if (user.role === 'Personal Trainer') {
+        const alunoParaVerificar = await Aluno.findOne(query);
+        if (!alunoParaVerificar) {
+            console.log(`   -> Aluno com ID ${id} não encontrado ou não pertence a este personal para atualização.`);
+            return res.status(404).json({ erro: "Aluno não encontrado ou sem permissão para atualizar" });
+        }
+    }
+    
+    // Se o email estiver sendo atualizado, verificar se o novo email já existe para outro aluno
+    if (updateData.email) {
+        const alunoComNovoEmail = await Aluno.findOne({ 
+            email: updateData.email.toLowerCase(), 
+            _id: { $ne: id } // Exclui o próprio aluno da verificação
+        });
+        if (alunoComNovoEmail) {
+            return res.status(409).json({ erro: `O email ${updateData.email} já está em uso por outro aluno.` });
+        }
+        updateData.email = updateData.email.toLowerCase(); // Garante lowercase
+    }
+
+
+    const alunoAtualizado = await Aluno.findOneAndUpdate(query, updateData, { 
+        new: true, 
+        runValidators: true 
+    }).select('-passwordHash'); // Não retorna passwordHash
+
+    if (!alunoAtualizado) {
+      console.log(`   -> Aluno com ID ${id} não encontrado ou não pertence a este personal para atualizar.`);
+      return res.status(404).json({ erro: "Aluno não encontrado ou sem permissão para atualizar" });
+    }
+
+    console.log("✅ Aluno atualizado:", alunoAtualizado);
+    res.status(200).json(alunoAtualizado);
+
+  } catch (error: any) {
+    console.error(`❌ Erro ao atualizar aluno ${id}:`, error);
+    if (error.name === 'ValidationError') {
+       return res.status(400).json({ 
+           erro: "Dados inválidos para atualização", 
+           detalhes: error.errors 
+       });
+    }
+    if (error.code === 11000 && error.keyPattern?.email) {
+        return res.status(409).json({ erro: `O email ${req.body.email} já está em uso por outro aluno.` });
+    }
+    res.status(500).json({ erro: "Erro interno ao atualizar aluno", detalhes: error?.message || error });
+  }
+});
+
+
+// DELETE /api/alunos/:id - Deletar aluno
+router.delete("/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = req.user;
+  console.log(`--- ROTA DELETE /api/alunos/${id} ATINGIDA ---`);
+
+  if (!user || !user.id) {
+    return res.status(401).json({ erro: "Usuário não autenticado corretamente." });
+  }
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    console.log(`   -> ID inválido para remoção: ${id}`);
+    return res.status(400).json({ erro: "ID do aluno inválido" }); 
+  }
+
+  try {
+    let query: mongoose.FilterQuery<any> = { _id: id };
+    if (user.role === 'Personal Trainer') {
+      query.trainerId = user.id;
+    }
+
+    const result = await Aluno.findOneAndDelete(query);
+
+    if (!result) {
+        console.log(`   -> Aluno com ID ${id} não encontrado ou não pertence a este personal para remoção.`);
+        return res.status(404).json({ erro: "Aluno não encontrado ou sem permissão para remover" });
+    }
+
+    console.log(`✅ Aluno removido: ${id}`);
+    // TODO: Considerar remover dados associados ao aluno (fichas, sessões, etc.) ou arquivá-los.
+    res.status(200).json({ mensagem: "Aluno removido com sucesso" });
+
+  } catch (error: any) {
+    console.error(`❌ Erro ao remover aluno ${id}:`, error);
+    res.status(500).json({ erro: "Erro interno ao remover aluno", detalhes: error?.message || error });
+  }
+});
+
+export default router;
+
+==== ./server/src/routes/auth.ts ====
+
+// server/src/routes/auth.ts
+import { Router, Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import PersonalTrainer, { IPersonalTrainer } from '../../models/PersonalTrainer';
+import Aluno, { IAluno } from '../../models/Aluno'; 
+import jwt, { Secret, SignOptions } from 'jsonwebtoken';
+import ms from 'ms';
+
+const router = Router();
+
+// Configuração JWT
+const JWT_SECRET_FROM_ENV = process.env.JWT_SECRET;
+const JWT_EXPIRES_IN_STRING = process.env.JWT_EXPIRES_IN;
+const JWT_ALUNO_EXPIRES_IN_STRING = process.env.JWT_ALUNO_EXPIRES_IN;
+
+if (!JWT_SECRET_FROM_ENV) {
+    console.error("🔴 FATAL ERROR: JWT_SECRET is not defined. Check the .env file in the project root.");
+    process.exit(1);
+}
+const JWT_SECRET: Secret = JWT_SECRET_FROM_ENV;
+
+const calculateExpiresInSeconds = (expiresInStringInput: string | undefined, defaultDuration: string): number => {
+    const targetString = expiresInStringInput || defaultDuration;
+    let seconds: number;
+    try {
+        const durationMs = ms(targetString as any); 
+        if (typeof durationMs === 'number' && !isNaN(durationMs)) {
+            seconds = Math.floor(durationMs / 1000);
+        } else {
+            console.warn(`🟡 Aviso: Formato inválido para JWT_EXPIRES_IN ('${targetString}'). Usando padrão de ${defaultDuration}.`);
+            const defaultMs = ms(defaultDuration as any);
+            seconds = typeof defaultMs === 'number' ? Math.floor(defaultMs / 1000) : 3600; 
+        }
+    } catch (e) {
+        console.warn(`🟡 Aviso: Exceção ao processar JWT_EXPIRES_IN ('${targetString}'). Usando padrão de ${defaultDuration}. Erro: ${e}`);
+        const defaultMs = ms(defaultDuration as any);
+        seconds = typeof defaultMs === 'number' ? Math.floor(defaultMs / 1000) : 3600;
+    }
+    return seconds;
+};
+
+const personalExpiresInSeconds = calculateExpiresInSeconds(JWT_EXPIRES_IN_STRING, '1h');
+const alunoExpiresInSeconds = calculateExpiresInSeconds(JWT_ALUNO_EXPIRES_IN_STRING, '7d');
+
+
+// --- Rota de Login de Personal/Admin [POST /api/auth/login] ---
+router.post('/login', async (req: Request, res: Response, next: NextFunction) => {
+    const { email, password } = req.body;
+    if (!email || !password) { return res.status(400).json({ message: 'Email e senha são obrigatórios.' }); }
+
+    try {
+        const user: IPersonalTrainer | null = await PersonalTrainer.findOne({ email: email.toLowerCase() }).select('+passwordHash +role');
+
+        if (!user || !user._id) {
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
+        }
+
+        const isPasswordValid = await user.comparePassword(password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
+        }
+
+        const firstName = user.nome.split(' ')[0] || '';
+        const lastName = user.nome.split(' ').slice(1).join(' ') || '';
+        const userRole = user.role || 'Personal Trainer';
+
+        const tokenPayload = {
+            id: (user._id as mongoose.Types.ObjectId).toString(),
+            email: user.email, firstName: firstName, lastName: lastName, role: userRole
+        };
+        const signOptions: SignOptions = { expiresIn: personalExpiresInSeconds };
+        const token = jwt.sign(tokenPayload, JWT_SECRET, signOptions);
+
+        console.log(`✅ Login de Personal/Admin bem-sucedido para: ${user.email} (Role: ${userRole})`);
+        res.json({
+            message: 'Login bem-sucedido!', token: token,
+            user: { 
+                id: (user._id as mongoose.Types.ObjectId).toString(),
+                username: user.email, firstName: firstName,
+                lastName: lastName, email: user.email, role: userRole
+            }
+        });
+    } catch (error) {
+        console.error("🔴 Erro na rota /login:", error);
+        next(error);
+    }
+});
+
+// --- Rota de Registro de Personal/Admin [POST /api/auth/register] ---
+router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
+    const { nome, email, password, role } = req.body;
+    if (!nome || !email || !password) { return res.status(400).json({ message: 'Nome, email e senha são obrigatórios.' }); }
+    if (password.length < 6) { return res.status(400).json({ message: 'A senha deve ter pelo menos 6 caracteres.' }); }
+
+    try {
+        const existingUser = await PersonalTrainer.findOne({ email: email.toLowerCase() });
+        if (existingUser) { return res.status(409).json({ message: 'Este email já está cadastrado.' }); }
+
+        const newUser = new PersonalTrainer({ nome, email: email.toLowerCase(), passwordHash: password, ...(role && { role }) });
+        const savedUser: IPersonalTrainer = await newUser.save();
+
+        if (!savedUser || !savedUser._id) {
+             console.error("🔴 Erro crítico: Usuário salvo não retornou _id.");
+             throw new Error('Falha ao obter ID do usuário após registro.');
+        }
+
+        const firstName = savedUser.nome.split(' ')[0] || '';
+        const lastName = savedUser.nome.split(' ').slice(1).join(' ') || '';
+        const userRole = savedUser.role;
+
+        const responseForFrontend = {
+            id: (savedUser._id as mongoose.Types.ObjectId).toString(),
+            username: savedUser.email,
+            firstName: firstName, lastName: lastName, email: savedUser.email, role: userRole
+        };
+
+        console.log(`✅ Usuário Personal/Admin registrado com sucesso: ${savedUser.email} (Role: ${userRole})`);
+        res.status(201).json({ message: 'Usuário registrado com sucesso!', user: responseForFrontend });
+
+    } catch (error: any) {
+        console.error("🔴 Erro na rota /register:", error);
+        if (error.name === 'ValidationError') {
+            const errors = Object.values(error.errors).map((el: any) => el.message);
+            return res.status(400).json({ message: 'Erro de validação', errors: errors });
+        }
+        next(error);
+    }
+});
+
+// --- Rota de Registro de Aluno via Link de Convite do Personal ---
+// POST /api/auth/aluno/registrar-por-convite-personal/:tokenPersonal
+router.post('/aluno/registrar-por-convite-personal/:tokenPersonal', async (req: Request, res: Response, next: NextFunction) => {
+    const { tokenPersonal } = req.params;
+    const { 
+        nome, email, password, birthDate, gender, goal, weight, height, startDate, phone, notes 
+    } = req.body;
+
+    console.log(`[POST /api/auth/aluno/registrar-por-convite-personal/${tokenPersonal}] Tentativa de registrar aluno. Email: ${email}`);
+
+    if (!nome || !email || !password || !birthDate || !gender || !goal || !weight || !height || !startDate) {
+        return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos.' });
+    }
+    if (password.length < 6) {
+        return res.status(400).json({ message: 'A senha deve ter pelo menos 6 caracteres.' });
+    }
+
+    try {
+        const personalTrainer: IPersonalTrainer | null = await PersonalTrainer.findOne({ tokenCadastroAluno: tokenPersonal });
+        if (!personalTrainer || !personalTrainer._id) {
+            return res.status(404).json({ message: 'Link de convite inválido ou expirado.' });
+        }
+        
+        const existingAluno = await Aluno.findOne({ email: email.toLowerCase() });
+        if (existingAluno) {
+            return res.status(409).json({ message: 'Este email já está cadastrado para um aluno.' });
+        }
+
+        const novoAluno = new Aluno({
+            nome, email: email.toLowerCase(), passwordHash: password, 
+            birthDate, gender, goal, weight, height, startDate, phone, notes,
+            status: 'active', 
+            trainerId: personalTrainer._id 
+        });
+
+        const alunoSalvo: IAluno = await novoAluno.save();
+        
+        const alunoTokenPayload = {
+            id: (alunoSalvo._id as mongoose.Types.ObjectId).toString(),
+            email: alunoSalvo.email,
+            nome: alunoSalvo.nome, 
+            role: 'Aluno',
+            personalId: (personalTrainer._id as mongoose.Types.ObjectId).toString()
+        };
+        const signOptions: SignOptions = { expiresIn: alunoExpiresInSeconds };
+        const token = jwt.sign(alunoTokenPayload, JWT_SECRET, signOptions);
+
+        console.log(`✅ Aluno registrado com sucesso via convite: ${alunoSalvo.email}`);
+        res.status(201).json({
+            message: 'Aluno registrado com sucesso!',
+            token: token, 
+            aluno: { 
+                id: (alunoSalvo._id as mongoose.Types.ObjectId).toString(),
+                nome: alunoSalvo.nome,
+                email: alunoSalvo.email,
+                role: 'Aluno',
+                personalId: (personalTrainer._id as mongoose.Types.ObjectId).toString()
+            }
+        });
+
+    } catch (error: any) {
+        console.error("🔴 Erro na rota /api/auth/aluno/registrar-por-convite-personal:", error);
+        if (error.name === 'ValidationError') {
+            const errors = Object.values(error.errors).map((el: any) => el.message);
+            return res.status(400).json({ message: 'Erro de validação ao criar aluno.', errors });
+        }
+        next(error);
+    }
+});
+
+
+// ***** NOVA ROTA: Login de Aluno [POST /api/auth/aluno/login] *****
+router.post('/aluno/login', async (req: Request, res: Response, next: NextFunction) => {
+    const { email, password } = req.body;
+    console.log(`[POST /api/auth/aluno/login] Tentativa de login do aluno. Email: ${email}`);
+
+    if (!email || !password) {
+        return res.status(400).json({ message: 'Email e senha são obrigatórios.' });
+    }
+
+    try {
+        // 1. Encontrar o aluno pelo email e selecionar o passwordHash
+        const aluno: IAluno | null = await Aluno.findOne({ email: email.toLowerCase() }).select('+passwordHash');
+
+        if (!aluno || !aluno._id) { // Verifica se aluno e _id existem
+            console.warn(`[LOGIN ALUNO] Aluno não encontrado com o email: ${email}`);
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
+        }
+
+        // 2. Comparar a senha fornecida com o hash armazenado
+        const isPasswordValid = await aluno.comparePassword(password);
+        if (!isPasswordValid) {
+            console.warn(`[LOGIN ALUNO] Senha inválida para o aluno com email: ${email}`);
+            return res.status(401).json({ message: 'Credenciais inválidas.' });
+        }
+
+        // 3. Gerar o token JWT para o aluno
+        const alunoTokenPayload = {
+            id: (aluno._id as mongoose.Types.ObjectId).toString(),
+            email: aluno.email,
+            nome: aluno.nome, // Você pode querer dividir em firstName/lastName se tiver esses campos no modelo Aluno
+            role: 'Aluno', // Define a role específica
+            personalId: aluno.trainerId.toString() // ID do personal associado
+        };
+        const signOptions: SignOptions = { expiresIn: alunoExpiresInSeconds };
+        const token = jwt.sign(alunoTokenPayload, JWT_SECRET, signOptions);
+
+        console.log(`✅ Login de Aluno bem-sucedido para: ${aluno.email}`);
+
+        // 4. Enviar resposta
+        res.json({
+            message: 'Login de aluno bem-sucedido!',
+            token: token,
+            aluno: { // Estrutura para o AlunoContext
+                id: (aluno._id as mongoose.Types.ObjectId).toString(),
+                nome: aluno.nome,
+                email: aluno.email,
+                role: 'Aluno',
+                personalId: aluno.trainerId.toString()
+            }
+        });
+
+    } catch (error: any) {
+        console.error("🔴 Erro na rota /api/auth/aluno/login:", error);
+        next(error); // Passa para o errorHandler geral
+    }
+});
+
+export default router;
+
+==== ./server/src/routes/convitePublicRoutes.ts ====
+
+// server/src/routes/convitePublicRoutes.ts
+import express, { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import PersonalTrainer from '../../models/PersonalTrainer'; // Presumindo que IPersonalTrainer está aqui ou é importado por ele
+import ConvitePersonal, { IConvitePersonal } from '../../models/ConvitePersonal';
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/convitePublicRoutes.ts] Ficheiro carregado ---");
+
+// Rota: GET /api/convites/validar/:tokenDeConvite
+// Usada pelo frontend quando o personal acessa o link de convite para verificar a validade do token.
+router.get('/validar/:tokenDeConvite', async (req: Request, res: Response, next: NextFunction) => {
+  const { tokenDeConvite } = req.params;
+  console.log(`[GET /api/convites/validar/${tokenDeConvite}] Tentativa de validar token.`);
+
+  if (!tokenDeConvite) {
+    return res.status(400).json({ mensagem: "Token de convite não fornecido." });
+  }
+
+  try {
+    const convite = await ConvitePersonal.findOne({ token: tokenDeConvite });
+
+    if (!convite) {
+      console.warn(`[GET /api/convites/validar/${tokenDeConvite}] Token não encontrado.`);
+      return res.status(404).json({ mensagem: "Convite inválido ou não encontrado." });
+    }
+
+    if (convite.status === 'utilizado') {
+      console.warn(`[GET /api/convites/validar/${tokenDeConvite}] Token já utilizado.`);
+      return res.status(400).json({ mensagem: "Este convite já foi utilizado." });
+    }
+
+    if (convite.status === 'expirado' || (convite.dataExpiracao && convite.dataExpiracao < new Date())) {
+      if (convite.status === 'pendente') {
+        convite.status = 'expirado';
+        await convite.save();
+      }
+      console.warn(`[GET /api/convites/validar/${tokenDeConvite}] Token expirado.`);
+      return res.status(400).json({ mensagem: "Este convite expirou." });
+    }
+    
+    console.log(`[GET /api/convites/validar/${tokenDeConvite}] Token válido. Email do convidado (se houver): ${convite.emailConvidado}`);
+    res.status(200).json({
+      mensagem: "Convite válido.",
+      emailConvidado: convite.emailConvidado,
+      roleConvidado: convite.roleConvidado,
+    });
+
+  } catch (error: any) {
+    console.error(`[GET /api/convites/validar/${tokenDeConvite}] Erro ao validar token:`, error);
+    next(error);
+  }
+});
+
+// Rota: POST /api/convites/registrar/:tokenDeConvite
+// Usada pelo formulário de cadastro do personal quando ele submete os dados.
+router.post('/registrar/:tokenDeConvite', async (req: Request, res: Response, next: NextFunction) => {
+  const { tokenDeConvite } = req.params;
+  const { nome, email, password } = req.body;
+
+  console.log(`[POST /api/convites/registrar/${tokenDeConvite}] Tentativa de registrar personal. Email: ${email}`);
+
+  if (!tokenDeConvite) {
+    return res.status(400).json({ mensagem: "Token de convite não fornecido." });
+  }
+  if (!nome || !email || !password) {
+    return res.status(400).json({ mensagem: "Nome, email e senha são obrigatórios." });
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    console.log(`[POST /api/convites/registrar/${tokenDeConvite}] Transação iniciada.`);
+
+    const convite = await ConvitePersonal.findOne({ token: tokenDeConvite }).session(session);
+
+    if (!convite) {
+      await session.abortTransaction();
+      console.warn(`[POST /api/convites/registrar/${tokenDeConvite}] Token não encontrado.`);
+      return res.status(404).json({ mensagem: "Convite inválido ou não encontrado." });
+    }
+
+    if (convite.status === 'utilizado') {
+      await session.abortTransaction();
+      console.warn(`[POST /api/convites/registrar/${tokenDeConvite}] Token já utilizado.`);
+      return res.status(400).json({ mensagem: "Este convite já foi utilizado." });
+    }
+
+    if (convite.status === 'expirado' || (convite.dataExpiracao && convite.dataExpiracao < new Date())) {
+      if (convite.status === 'pendente') {
+        convite.status = 'expirado';
+        await convite.save({ session });
+      }
+      await session.abortTransaction();
+      console.warn(`[POST /api/convites/registrar/${tokenDeConvite}] Token expirado.`);
+      return res.status(400).json({ mensagem: "Este convite expirou." });
+    }
+
+    if (convite.emailConvidado && convite.emailConvidado.toLowerCase() !== email.toLowerCase()) {
+      await session.abortTransaction();
+      console.warn(`[POST /api/convites/registrar/${tokenDeConvite}] Email fornecido (${email}) não corresponde ao email do convite (${convite.emailConvidado}).`);
+      return res.status(400).json({ mensagem: "O email fornecido não corresponde ao email do convite." });
+    }
+
+    const existingPersonal = await PersonalTrainer.findOne({ email: email.toLowerCase() }).session(session);
+    if (existingPersonal) {
+      await session.abortTransaction();
+      console.warn(`[POST /api/convites/registrar/${tokenDeConvite}] Email ${email} já cadastrado.`);
+      return res.status(409).json({ mensagem: `Já existe um usuário com o email: ${email}` });
+    }
+
+    const novoPersonal = new PersonalTrainer({
+      nome,
+      email: email.toLowerCase(),
+      passwordHash: password, 
+      role: convite.roleConvidado,
+    });
+    await novoPersonal.save({ session });
+    console.log(`[POST /api/convites/registrar/${tokenDeConvite}] Novo personal ID: ${novoPersonal._id} (${novoPersonal.email}) criado.`);
+
+    convite.status = 'utilizado';
+    // CORREÇÃO APLICADA AQUI: Coerção de tipo para mongoose.Types.ObjectId
+    convite.usadoPor = novoPersonal._id as mongoose.Types.ObjectId;
+    convite.dataUtilizacao = new Date();
+    await convite.save({ session });
+    console.log(`[POST /api/convites/registrar/${tokenDeConvite}] Convite (ID: ${convite._id}) marcado como utilizado pelo personal ID: ${novoPersonal._id}.`);
+
+    await session.commitTransaction();
+    console.log(`[POST /api/convites/registrar/${tokenDeConvite}] Transação commitada. Personal registrado com sucesso.`);
+
+    res.status(201).json({ mensagem: "Personal registrado com sucesso! Você já pode fazer login." });
+
+  } catch (error: any) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+      console.error(`[POST /api/convites/registrar/${tokenDeConvite}] Transação abortada devido a erro.`);
+    }
+    console.error(`[POST /api/convites/registrar/${tokenDeConvite}] Erro ao registrar personal:`, error);
+    if (error.name === 'ValidationError') {
+      const mensagens = Object.values(error.errors).map((el: any) => el.message);
+      return res.status(400).json({ mensagem: mensagens.join(', ') });
+    }
+    next(error);
+  } finally {
+    session.endSession();
+    console.log(`[POST /api/convites/registrar/${tokenDeConvite}] Sessão finalizada.`);
+  }
+});
+
+export default router;
+
+==== ./server/src/routes/dashboardGeralRoutes.ts ====
+
+// server/src/routes/dashboardGeralRoutes.ts
+import express, { Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import { authenticateToken, AuthenticatedRequest } from '../../middlewares/authenticateToken';
+import Aluno from '../../models/Aluno';
+import Treino from '../../models/Treino';
+import Sessao from '../../models/Sessao'; // <<<< IMPORTAR O MODELO SESSAO
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/dashboardGeralRoutes.ts] Ficheiro carregado e rota GET / definida ---");
+
+router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const trainerId = req.user?.id;
+
+    if (!trainerId) {
+        return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    }
+
+    console.log(`[GET /api/dashboard/geral] Buscando estatísticas para o trainerId: ${trainerId}`);
+
+    try {
+        const trainerObjectId = new mongoose.Types.ObjectId(trainerId);
+
+        // 1. Total de Alunos
+        const totalAlunos = await Aluno.countDocuments({ trainerId: trainerObjectId });
+        console.log(`[GET /api/dashboard/geral] Total de alunos: ${totalAlunos}`);
+
+        // 2. Treinos (Modelo) Ativos
+        const treinosAtivos = await Treino.countDocuments({ 
+            criadorId: trainerObjectId, 
+            tipo: 'modelo', 
+            status: 'ativo' 
+        });
+        console.log(`[GET /api/dashboard/geral] Treinos (modelo) ativos: ${treinosAtivos}`);
+
+        // 3. Sessões Agendadas para Hoje
+        const hojeInicio = new Date();
+        hojeInicio.setHours(0, 0, 0, 0); // Início do dia
+        const hojeFim = new Date();
+        hojeFim.setHours(23, 59, 59, 999); // Fim do dia
+
+        const sessoesHojeCount = await Sessao.countDocuments({
+            trainerId: trainerObjectId,
+            sessionDate: {
+                $gte: hojeInicio,
+                $lte: hojeFim
+            },
+            // Poderíamos adicionar filtro por status aqui se necessário, ex: status: { $in: ['pending', 'confirmed'] }
+        });
+        console.log(`[GET /api/dashboard/geral] Sessões hoje: ${sessoesHojeCount}`);
+
+        // 4. Taxa de Conclusão Geral (últimos 30 dias)
+        const trintaDiasAtras = new Date();
+        trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
+        trintaDiasAtras.setHours(0,0,0,0); // Para pegar desde o início do dia 30 dias atrás
+
+        const agora = new Date();
+
+        const sessoesUltimos30Dias = await Sessao.find({
+            trainerId: trainerObjectId,
+            sessionDate: { $gte: trintaDiasAtras, $lte: agora } // Sessões que ocorreram ou deveriam ter ocorrido até agora
+        }).select('status sessionDate').lean();
+
+        let sessoesConcluidas = 0;
+        let sessoesCanceladasPassadas = 0;
+
+        sessoesUltimos30Dias.forEach(sessao => {
+            if (sessao.status === 'completed') {
+                sessoesConcluidas++;
+            } else if (sessao.status === 'cancelled' && new Date(sessao.sessionDate) < agora) {
+                // Considera cancelada apenas se a data da sessão já passou
+                sessoesCanceladasPassadas++;
+            }
+        });
+        
+        const denominadorTaxa = sessoesConcluidas + sessoesCanceladasPassadas;
+        const taxaConclusaoGeral = denominadorTaxa > 0 ? (sessoesConcluidas / denominadorTaxa) : 0;
+
+        console.log(`[GET /api/dashboard/geral] Sessões concluídas (30d): ${sessoesConcluidas}`);
+        console.log(`[GET /api/dashboard/geral] Sessões canceladas passadas (30d): ${sessoesCanceladasPassadas}`);
+        console.log(`[GET /api/dashboard/geral] Denominador taxa: ${denominadorTaxa}`);
+        console.log(`[GET /api/dashboard/geral] Taxa de conclusão (0-1): ${taxaConclusaoGeral}`);
+
+
+        res.json({
+            totalAlunos,
+            treinosAtivos,
+            sessoesHojeCount,
+            taxaConclusaoGeral, // Será um valor entre 0 e 1
+        });
+
+    } catch (error) {
+        console.error("[GET /api/dashboard/geral] Erro ao buscar estatísticas:", error);
+        next(error);
+    }
+});
+
+export default router;
+==== ./server/src/routes/exercicios.ts ====
+
+// server/src/routes/exercicios.ts
+import express, { Request, Response, Router, NextFunction } from "express";
+import mongoose from "mongoose";
+import Exercicio, { IExercicio } from "../../models/Exercicio"; // Certifique-se que IExercicio está exportada
+import { authenticateToken, AuthenticatedRequest } from '../../middlewares/authenticateToken';
+
+const router: Router = express.Router();
+
+// Função auxiliar de filtro (pode ser mantida ou simplificada se não usada por outras rotas)
+const buildFilterQuery = (baseFilter: mongoose.FilterQuery<IExercicio>, req: Request): mongoose.FilterQuery<IExercicio> => {
+    const query: mongoose.FilterQuery<IExercicio> = { ...baseFilter };
+    const { grupo, categoria, nome } = req.query;
+    const ALL_VALUE = "all";
+
+    if (grupo && typeof grupo === 'string' && grupo !== ALL_VALUE) {
+        query.grupoMuscular = grupo;
+    }
+    if (categoria && typeof categoria === 'string' && categoria !== ALL_VALUE) {
+        // Assumindo que 'categoria' no frontend corresponde a 'tipo' no schema do exercício
+        query.tipo = categoria; 
+    }
+    if (nome && typeof nome === 'string') {
+         query.nome = { $regex: nome, $options: 'i' };
+    }
+    console.log(`[buildFilterQuery] Query Mongoose aplicada: ${JSON.stringify(query)}`);
+    return query;
+};
+
+// --- ROTAS EXISTENTES (GET /app, /meus, /favoritos, POST, PUT, DELETE) ---
+// MANTENHA-AS COMO ESTÃO
+
+// Rota para buscar exercícios do App (com filtros)
+router.get("/app", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const userId = req.user?.id; 
+  try {
+    const filterQuery = buildFilterQuery({ isCustom: false }, req); 
+    const exerciciosApp = await Exercicio.find(filterQuery).lean();
+    const exerciciosComFavorito = exerciciosApp.map(ex => ({
+      ...ex,
+      isFavoritedByCurrentUser: ex.favoritedBy?.some(favId => favId.equals(new mongoose.Types.ObjectId(userId))) ?? false
+    }));
+    res.status(200).json(exerciciosComFavorito);
+  } catch (error) {
+    console.error(`❌ Erro ao buscar exercícios do App:`, error);
+    next(error); 
+  }
+});
+
+// Rota para buscar exercícios do personal (com filtros)
+router.get("/meus", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const creatorId = req.user?.id;
+  try {
+    if (!creatorId) { return res.status(401).json({ erro: "Usuário não autenticado." }); }
+    const filterQuery = buildFilterQuery({ creatorId: new mongoose.Types.ObjectId(creatorId), isCustom: true }, req);
+    const exercicios = await Exercicio.find(filterQuery).lean();
+    const exerciciosComFavorito = exercicios.map(ex => ({
+      ...ex,
+      isFavoritedByCurrentUser: ex.favoritedBy?.some(favId => favId.equals(new mongoose.Types.ObjectId(creatorId))) ?? false
+    }));
+    res.status(200).json(exerciciosComFavorito);
+  } catch (error) {
+     console.error(`❌ Erro ao buscar exercícios personalizados:`, error);
+     next(error);
+  }
+});
+
+// Rota para buscar exercícios favoritos (com filtros)
+router.get("/favoritos", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const userId = req.user?.id;
+  try {
+    if (!userId) { return res.status(401).json({ erro: "Usuário não autenticado." }); }
+    const filterQuery = buildFilterQuery({ favoritedBy: new mongoose.Types.ObjectId(userId) }, req);
+    const favoritos = await Exercicio.find(filterQuery).lean();
+    const exerciciosComFavorito = favoritos.map(ex => ({
+      ...ex,
+      isFavoritedByCurrentUser: true 
+    }));
+    res.status(200).json(exerciciosComFavorito);
+  } catch (error) {
+     console.error(`❌ Erro ao buscar favoritos:`, error);
+     next(error);
+  }
+});
+
+
+// <<<< NOVA ROTA PARA AUTOCOMPLETE >>>>
+interface ExercicioAutocomplete {
+  _id: string;
+  nome: string;
+  grupoMuscular?: string;
+  isCustom: boolean; // Para o frontend saber a origem
+}
+
+router.get("/autocomplete", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const personalId = req.user?.id;
+    const searchTerm = req.query.nome as string; // Termo de busca para o nome
+    const limit = parseInt(req.query.limit as string) || 10; // Limite de resultados, padrão 10
+
+    if (!personalId) {
+        return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    }
+    if (!searchTerm || typeof searchTerm !== 'string' || searchTerm.trim().length < 2) { // Exige pelo menos 2 caracteres
+        return res.status(400).json({ mensagem: "Termo de busca para nome é obrigatório e deve ter pelo menos 2 caracteres." });
+    }
+
+    try {
+        const searchRegex = new RegExp(searchTerm.trim(), 'i'); // 'i' para case-insensitive
+
+        // Condição de busca:
+        // 1. Exercícios do app (isCustom: false) que correspondem ao searchTerm
+        // OU
+        // 2. Exercícios customizados pelo personal logado (isCustom: true, creatorId: personalId) que correspondem ao searchTerm
+        const queryConditions = {
+            nome: searchRegex,
+            $or: [
+                { isCustom: false },
+                { isCustom: true, creatorId: new mongoose.Types.ObjectId(personalId) }
+            ]
+        };
+
+        const exerciciosEncontrados = await Exercicio.find(queryConditions)
+            .select('_id nome grupoMuscular isCustom') // Seleciona apenas os campos necessários
+            .limit(limit)
+            .sort({ nome: 1 }) // Ordena por nome
+            .lean<ExercicioAutocomplete[]>(); // Usa a interface específica para autocomplete
+
+        console.log(`[GET /api/exercicios/autocomplete] Termo: "${searchTerm}", Encontrados: ${exerciciosEncontrados.length}`);
+        res.json(exerciciosEncontrados);
+
+    } catch (error) {
+        console.error("[GET /api/exercicios/autocomplete] Erro ao buscar exercícios para autocomplete:", error);
+        next(error);
+    }
+});
+
+
+// Criar exercício
+router.post("/", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const creatorId = req.user?.id;
+    // Ajuste para pegar os campos corretos conforme o schema IExercicio
+    const { nome, descricao, categoria, grupoMuscular, tipo, urlVideo } = req.body; 
+
+    if (!nome) { return res.status(400).json({ erro: "O nome é obrigatório." }); }
+    if (!creatorId) { return res.status(401).json({ erro: "Usuário não autenticado." }); }
+    
+    try {
+        const jaExiste = await Exercicio.findOne({
+            nome: nome.trim(),
+            creatorId: new mongoose.Types.ObjectId(creatorId),
+            isCustom: true
+        });
+        if (jaExiste) { return res.status(409).json({ erro: "Você já possui um exercício personalizado com esse nome." }); }
+
+        const novoExercicio = await Exercicio.create({
+            nome: nome.trim(), 
+            descricao, 
+            categoria, // Usado para filtro "tipo" no frontend
+            grupoMuscular, 
+            tipo, // Pode ser o campo "tipo" do seu schema original de exercício
+            urlVideo,
+            isCustom: true, 
+            creatorId: new mongoose.Types.ObjectId(creatorId), 
+            favoritedBy: [],
+        });
+        console.log(`✅ Exercício criado por ${creatorId}:`, novoExercicio.nome);
+        res.status(201).json(novoExercicio);
+    } catch (error) { next(error); }
+});
+
+// Atualizar exercício
+router.put("/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const userId = req.user?.id;
+    const { id } = req.params;
+    const updates = req.body;
+    delete updates._id; delete updates.creatorId; delete updates.isCustom; delete updates.favoritedBy;
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) { return res.status(400).json({ erro: "ID inválido." }); }
+    if (!userId) { return res.status(401).json({ erro: "Não autorizado." }); }
+
+    try {
+        const exercicio = await Exercicio.findById(id);
+        if (!exercicio) { return res.status(404).json({ erro: "Exercício não encontrado." }); }
+        
+        if (!exercicio.isCustom || !exercicio.creatorId || !exercicio.creatorId.equals(new mongoose.Types.ObjectId(userId))) {
+             return res.status(403).json({ erro: "Permissão negada para editar." });
+        }
+        
+        // Aplicar apenas os campos permitidos para atualização
+        const camposPermitidos: (keyof IExercicio)[] = ['nome', 'descricao', 'categoria', 'grupoMuscular', 'tipo', 'urlVideo'];
+        for (const campo of camposPermitidos) {
+            if (updates[campo] !== undefined) {
+                (exercicio as any)[campo] = updates[campo];
+            }
+        }
+
+        await exercicio.save();
+        res.status(200).json(exercicio);
+    } catch (error) { next(error); }
+});
+
+// Favoritar
+router.post("/:id/favorite", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const userId = req.user?.id;
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) { return res.status(400).json({ erro: "ID inválido." }); }
+    if (!userId) { return res.status(401).json({ erro: "Não autorizado." }); }
+    try {
+        await Exercicio.updateOne({ _id: id }, { $addToSet: { favoritedBy: new mongoose.Types.ObjectId(userId) } });
+        res.status(200).json({ message: "Exercício favoritado." });
+    } catch (error) { next(error); }
+});
+
+// Desfavoritar
+router.delete("/:id/favorite", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const userId = req.user?.id;
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) { return res.status(400).json({ erro: "ID inválido." }); }
+    if (!userId) { return res.status(401).json({ erro: "Não autorizado." }); }
+    try {
+        await Exercicio.updateOne({ _id: id }, { $pull: { favoritedBy: new mongoose.Types.ObjectId(userId) } });
+        res.status(200).json({ message: "Exercício desfavoritado." });
+    } catch (error) { next(error); }
+});
+
+// Deletar exercício
+router.delete("/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const userId = req.user?.id;
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) { return res.status(400).json({ erro: "ID inválido." }); }
+    if (!userId) { return res.status(401).json({ erro: "Não autorizado." }); }
+    try {
+        const exercicio = await Exercicio.findById(id);
+        if (!exercicio) { return res.status(404).json({ erro: "Exercício não encontrado." }); }
+        
+        if (!exercicio.isCustom || !exercicio.creatorId || !exercicio.creatorId.equals(new mongoose.Types.ObjectId(userId))) {
+             return res.status(403).json({ erro: "Permissão negada para deletar." });
+        }
+        await exercicio.deleteOne(); // Correção: usar deleteOne() na instância do documento
+        res.status(200).json({ message: "Exercício deletado com sucesso." });
+    } catch (error) { next(error); }
+});
+
+export default router;
+==== ./server/src/routes/pastasTreinos.ts ====
+
+// server/src/routes/pastasTreinos.ts
+import express, { Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import PastaTreino, { IPasta } from '../../models/Pasta';
+import Treino from '../../models/Treino';
+import { authenticateToken, AuthenticatedRequest } from '../../middlewares/authenticateToken';
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/pastasTreinos.ts] Ficheiro carregado (DEBUG transação para reordenar - Correção TS) ---");
+
+// ... (outras rotas como POST, GET, PUT/:pastaId permanecem como estão) ...
+
+// PUT /api/pastas/treinos/reordenar - Reordenar pastas COM TRANSAÇÃO (VERSÃO DE DEBUG)
+router.put('/reordenar', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const criadorId = req.user?.id;
+    const { novaOrdemIds } = req.body;
+
+    console.log(`[DEBUG PUT /api/pastas/treinos/reordenar] Tentativa de reordenar pastas. CriadorID: ${criadorId}`);
+    console.log(`[DEBUG PUT /api/pastas/treinos/reordenar] Nova ordem de IDs recebida:`, novaOrdemIds);
+
+    if (!criadorId) {
+        console.warn("[DEBUG PUT /api/pastas/treinos/reordenar] Usuário não autenticado.");
+        return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    }
+
+    if (!Array.isArray(novaOrdemIds) || novaOrdemIds.some(id => typeof id !== 'string' || !mongoose.Types.ObjectId.isValid(id))) {
+        console.warn("[DEBUG PUT /api/pastas/treinos/reordenar] 'novaOrdemIds' deve ser um array de IDs de pasta válidos.");
+        return res.status(400).json({ mensagem: "'novaOrdemIds' deve ser um array de IDs de pasta válidos." });
+    }
+
+    const session = await mongoose.startSession();
+    let sessionIdForLogging = "N/A_SESSAO_INIT"; // Valor padrão
+    try {
+        // Correção para obter o ID da sessão como string hexadecimal
+        if (session.id && session.id.id && typeof session.id.id.toString === 'function') {
+            sessionIdForLogging = session.id.id.toString('hex');
+        } else {
+            sessionIdForLogging = "ID_SESSAO_NAO_RECUPERAVEL";
+            console.warn("[DEBUG TRANSACTION] Não foi possível obter o ID da sessão para logging.");
+        }
+
+        console.log(`[DEBUG TRANSACTION ${sessionIdForLogging}] Iniciando transação para reordenar pastas.`);
+        session.startTransaction();
+
+        const criadorObjectId = new mongoose.Types.ObjectId(criadorId);
+
+        for (let i = 0; i < novaOrdemIds.length; i++) {
+            const pastaId = novaOrdemIds[i];
+            const index = i;
+            console.log(`  [DEBUG TRANSACTION ${sessionIdForLogging}] Atualizando Pasta ID: ${pastaId} para Ordem: ${index}`);
+            const result = await PastaTreino.updateOne(
+                { _id: new mongoose.Types.ObjectId(pastaId), criadorId: criadorObjectId },
+                { $set: { ordem: index } },
+                { session }
+            );
+            console.log(`    [DEBUG TRANSACTION ${sessionIdForLogging}] Resultado para Pasta ID ${pastaId}: matchedCount=${result.matchedCount}, modifiedCount=${result.modifiedCount}`);
+            if (result.matchedCount === 0) {
+                console.warn(`  [DEBUG TRANSACTION ${sessionIdForLogging}] ERRO: Pasta com ID ${pastaId} não encontrada para o usuário ${criadorId}. Abortando.`);
+                await session.abortTransaction();
+                return res.status(404).json({ mensagem: `Erro ao reordenar: Pasta com ID ${pastaId} não encontrada.` });
+            }
+        }
+
+        console.log(`[DEBUG TRANSACTION ${sessionIdForLogging}] Commitando transação.`);
+        await session.commitTransaction();
+        console.log("[DEBUG PUT /api/pastas/treinos/reordenar] Pastas reordenadas com sucesso (com transação).");
+        res.status(200).json({ mensagem: "Pastas reordenadas com sucesso." });
+
+    } catch (error: any) {
+        console.error(`[DEBUG TRANSACTION ${sessionIdForLogging}] Erro durante a transação de reordenar pastas:`, error);
+        if (session.inTransaction()) {
+            console.log(`[DEBUG TRANSACTION ${sessionIdForLogging}] Abortando transação devido a erro.`);
+            await session.abortTransaction();
+        } else {
+            console.log(`[DEBUG TRANSACTION ${sessionIdForLogging}] Transação não estava ativa no momento do erro ou já foi abortada/commitada.`);
+        }
+        next(error);
+    } finally {
+        console.log(`[DEBUG TRANSACTION ${sessionIdForLogging}] Finalizando sessão.`);
+        await session.endSession();
+    }
+});
+
+
+// POST /api/pastas/treinos - Criar uma nova pasta de treino
+router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const criadorId = req.user?.id;
+  const { nome } = req.body;
+
+  console.log(`[POST /api/pastas/treinos] Tentativa de criar pasta. Nome: "${nome}", CriadorID: ${criadorId}`);
+
+  if (!criadorId) {
+    console.warn("[POST /api/pastas/treinos] Usuário não autenticado.");
+    return res.status(401).json({ mensagem: "Usuário não autenticado." });
+  }
+
+  if (!nome || typeof nome !== 'string' || nome.trim().length === 0) {
+    console.warn("[POST /api/pastas/treinos] Nome da pasta ausente ou inválido.");
+    return res.status(400).json({ mensagem: "O nome da pasta é obrigatório e não pode ser vazio." });
+  }
+
+  try {
+    const criadorObjectId = new mongoose.Types.ObjectId(criadorId);
+    const pastaExistente = await PastaTreino.findOne({ nome: nome.trim(), criadorId: criadorObjectId });
+    if (pastaExistente) {
+      console.warn(`[POST /api/pastas/treinos] Pasta com nome "${nome.trim()}" já existe para o usuário ${criadorId}.`);
+      return res.status(409).json({ mensagem: `Uma pasta com o nome "${nome.trim()}" já existe.` });
+    }
+
+    const contagemPastas = await PastaTreino.countDocuments({ criadorId: criadorObjectId });
+
+    const novaPasta = new PastaTreino({
+      nome: nome.trim(),
+      criadorId: criadorObjectId,
+      ordem: contagemPastas,
+    });
+
+    await novaPasta.save();
+    console.log(`[POST /api/pastas/treinos] Pasta "${novaPasta.nome}" criada com sucesso. ID: ${novaPasta._id}, Ordem: ${novaPasta.ordem}`);
+    res.status(201).json(novaPasta);
+
+  } catch (error: any) {
+    console.error("[POST /api/pastas/treinos] Erro ao criar pasta:", error);
+    if (error.name === 'ValidationError') {
+      const mensagens = Object.values(error.errors).map((el: any) => el.message);
+      return res.status(400).json({ mensagem: mensagens.join(', ') });
+    }
+    next(error);
+  }
+});
+
+// GET /api/pastas/treinos - Listar todas as pastas de treino do usuário logado
+router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const criadorId = req.user?.id;
+  console.log(`[GET /api/pastas/treinos] Buscando pastas para o criador ID: ${criadorId}`);
+
+  if (!criadorId) {
+    console.warn("[GET /api/pastas/treinos] Usuário não autenticado.");
+    return res.status(401).json({ mensagem: "Usuário não autenticado." });
+  }
+
+  try {
+    const pastas = await PastaTreino.find({ criadorId: new mongoose.Types.ObjectId(criadorId) })
+      .sort({ ordem: 1, nome: 1 });
+
+    console.log(`[GET /api/pastas/treinos] ${pastas.length} pastas encontradas para o usuário ${criadorId}.`);
+    res.status(200).json(pastas);
+
+  } catch (error: any) {
+    console.error("[GET /api/pastas/treinos] Erro ao buscar pastas:", error);
+    next(error);
+  }
+});
+
+// PUT /api/pastas/treinos/:pastaId - Editar nome da pasta
+router.put('/:pastaId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const { pastaId } = req.params;
+    const criadorId = req.user?.id;
+    const { nome } = req.body;
+
+    console.log(`[PUT /api/pastas/treinos/${pastaId}] Tentativa de editar pasta. Novo nome: "${nome}", CriadorID: ${criadorId}`);
+
+    if (!criadorId) {
+        return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    }
+    if (!mongoose.Types.ObjectId.isValid(pastaId)) {
+        return res.status(400).json({ mensagem: "ID da pasta inválido." });
+    }
+    if (!nome || typeof nome !== 'string' || nome.trim().length === 0) {
+        return res.status(400).json({ mensagem: "O nome da pasta é obrigatório." });
+    }
+
+    try {
+        const criadorObjectId = new mongoose.Types.ObjectId(criadorId);
+        const pastaObjectId = new mongoose.Types.ObjectId(pastaId);
+
+        const pastaParaAtualizar = await PastaTreino.findOne({ _id: pastaObjectId, criadorId: criadorObjectId });
+
+        if (!pastaParaAtualizar) {
+            return res.status(404).json({ mensagem: "Pasta não encontrada ou você não tem permissão para editá-la." });
+        }
+
+        const pastaComMesmoNome = await PastaTreino.findOne({
+            nome: nome.trim(),
+            criadorId: criadorObjectId,
+            _id: { $ne: pastaObjectId }
+        });
+
+        if (pastaComMesmoNome) {
+            return res.status(409).json({ mensagem: `Outra pasta com o nome "${nome.trim()}" já existe.` });
+        }
+
+        pastaParaAtualizar.nome = nome.trim();
+        await pastaParaAtualizar.save();
+
+        console.log(`[PUT /api/pastas/treinos/${pastaId}] Pasta atualizada com sucesso para "${pastaParaAtualizar.nome}".`);
+        res.status(200).json(pastaParaAtualizar);
+
+    } catch (error: any) {
+        console.error(`[PUT /api/pastas/treinos/${pastaId}] Erro ao editar pasta:`, error);
+        if (error.name === 'ValidationError') {
+            const mensagens = Object.values(error.errors).map((el: any) => el.message);
+            return res.status(400).json({ mensagem: mensagens.join(', ') });
+        }
+        next(error);
+    }
+});
+
+
+// DELETE /api/pastas/treinos/:pastaId - Excluir uma pasta de treino
+router.delete('/:pastaId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const { pastaId } = req.params;
+    const criadorId = req.user?.id;
+
+    console.log(`[DELETE /api/pastas/treinos/${pastaId}] Tentativa de excluir pasta. CriadorID: ${criadorId}`);
+
+    if (!criadorId) {
+        console.warn(`[DELETE /api/pastas/treinos/${pastaId}] Usuário não autenticado.`);
+        return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(pastaId)) {
+        console.warn(`[DELETE /api/pastas/treinos/${pastaId}] ID da pasta inválido: ${pastaId}`);
+        return res.status(400).json({ mensagem: "ID da pasta inválido." });
+    }
+
+    const session = await mongoose.startSession();
+    let sessionIdForLogging = "N/A_SESSAO_INIT_DELETE";
+    try {
+        if (session.id && session.id.id && typeof session.id.id.toString === 'function') {
+            sessionIdForLogging = session.id.id.toString('hex');
+        } else {
+            sessionIdForLogging = "ID_SESSAO_NAO_RECUPERAVEL_DELETE";
+             console.warn("[TRANSACTION DELETE] Não foi possível obter o ID da sessão para logging.");
+        }
+
+        console.log(`[TRANSACTION ${sessionIdForLogging}] Iniciando transação para excluir pasta ${pastaId}.`);
+        session.startTransaction();
+
+        const pastaObjectId = new mongoose.Types.ObjectId(pastaId);
+        const criadorObjectId = new mongoose.Types.ObjectId(criadorId);
+
+        const pastaParaExcluir = await PastaTreino.findOne({ _id: pastaObjectId, criadorId: criadorObjectId }).session(session);
+
+        if (!pastaParaExcluir) {
+            console.warn(`[TRANSACTION ${sessionIdForLogging}] Pasta não encontrada ou usuário não autorizado. Abortando.`);
+            await session.abortTransaction();
+            return res.status(404).json({ mensagem: "Pasta não encontrada ou você não tem permissão para excluí-la." });
+        }
+
+        console.log(`  [TRANSACTION ${sessionIdForLogging}] Desassociando fichas da pasta ${pastaId}.`);
+        const updateResult = await Treino.updateMany(
+            { criadorId: criadorObjectId, tipo: 'modelo', pastaId: pastaObjectId },
+            { $set: { pastaId: null } },
+            { session }
+        );
+        console.log(`  [TRANSACTION ${sessionIdForLogging}] ${updateResult.modifiedCount} fichas foram desassociadas.`);
+
+        console.log(`  [TRANSACTION ${sessionIdForLogging}] Excluindo pasta ${pastaId}.`);
+        const deleteResult = await PastaTreino.deleteOne({ _id: pastaObjectId, criadorId: criadorObjectId }, { session });
+
+        if (deleteResult.deletedCount === 0) {
+            console.warn(`  [TRANSACTION ${sessionIdForLogging}] ERRO: Falha ao deletar a pasta ${pastaId} (não encontrada ou já deletada). Abortando.`);
+            await session.abortTransaction();
+            return res.status(404).json({ mensagem: "Erro ao excluir: Pasta não encontrada no momento da exclusão." });
+        }
+
+        console.log(`[TRANSACTION ${sessionIdForLogging}] Commitando transação.`);
+        await session.commitTransaction();
+        console.log(`[DELETE /api/pastas/treinos/${pastaId}] Pasta "${pastaParaExcluir.nome}" excluída com sucesso (com transação).`);
+        res.status(200).json({ mensagem: `Pasta "${pastaParaExcluir.nome}" excluída com sucesso.` });
+
+    } catch (error: any) {
+        console.error(`[TRANSACTION ${sessionIdForLogging}] Erro durante a transação de excluir pasta ${pastaId}:`, error);
+        if (session.inTransaction()) {
+            console.log(`[TRANSACTION ${sessionIdForLogging}] Abortando transação devido a erro.`);
+            await session.abortTransaction();
+        } else {
+            console.log(`[TRANSACTION ${sessionIdForLogging}] Transação não estava ativa no momento do erro ou já foi abortada/commitada.`);
+        }
+        next(error);
+    } finally {
+        console.log(`[TRANSACTION ${sessionIdForLogging}] Finalizando sessão.`);
+        await session.endSession();
+    }
+});
+
+
+export default router;
+
+==== ./server/src/routes/profile.ts ====
+
+import { Router, Request, Response, NextFunction } from 'express';
+import PersonalTrainer, { IPersonalTrainer } from '../../models/PersonalTrainer';
+import { authenticateToken, AuthenticatedRequest } from '../../middlewares/authenticateToken'; // Importe o tipo
+
+const router = Router();
+
+// Rota para ATUALIZAR o perfil do personal trainer logado
+// PATCH /api/profile/me
+router.patch('/me', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const userId = req.user?.id;
+    const { firstName, lastName } = req.body;
+
+    if (!userId) {
+        return res.status(401).json({ message: 'Não autorizado: ID do usuário não encontrado no token.' });
+    }
+
+    if (!firstName || !lastName) {
+        return res.status(400).json({ message: 'Nome e Sobrenome são obrigatórios.' });
+    }
+    if (typeof firstName !== 'string' || typeof lastName !== 'string') {
+         return res.status(400).json({ message: 'Nome e Sobrenome devem ser strings.' });
+    }
+
+    try {
+        const nomeCompleto = `${firstName.trim()} ${lastName.trim()}`.trim();
+
+        // Força a tipagem do resultado para IPersonalTrainer | null
+        const updatedUser = await PersonalTrainer.findByIdAndUpdate(
+            userId,
+            { nome: nomeCompleto },
+            { new: true, runValidators: true, select: '-passwordHash' }
+        ).exec() as IPersonalTrainer | null; // Adiciona .exec() e tipagem explícita
+
+        // <<< CORREÇÃO: Verifica se updatedUser e seu _id existem >>>
+        if (!updatedUser || !updatedUser._id) {
+            // Se findByIdAndUpdate não encontrar o usuário, retorna null
+            console.warn(`[SERVER] Usuário ${userId} não encontrado para atualização de perfil.`);
+            return res.status(404).json({ message: 'Personal Trainer não encontrado.' });
+        }
+        // <<< FIM DA CORREÇÃO >>>
+
+        // Agora é seguro acessar updatedUser._id e outras propriedades
+        const responseUser = {
+            id: updatedUser._id.toString(), // Agora TypeScript confia
+            username: updatedUser.email,
+            firstName: updatedUser.nome.split(' ')[0] || '',
+            lastName: updatedUser.nome.split(' ').slice(1).join(' ') || '',
+            email: updatedUser.email,
+            role: updatedUser.role
+        };
+
+        console.log(`[SERVER] Perfil atualizado para usuário ${userId}: ${nomeCompleto}`);
+        res.status(200).json({ message: 'Perfil atualizado com sucesso!', user: responseUser });
+
+    } catch (error: any) {
+        console.error(`[SERVER] Erro ao atualizar perfil para usuário ${userId}:`, error);
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map((e: any) => e.message);
+            return res.status(400).json({ message: messages.join(', ') });
+        }
+        next(error);
+    }
+});
+
+export default router;
+==== ./server/src/routes/publicContatosRoutes.ts ====
+
+// server/src/routes/publicContatosRoutes.ts
+import express, { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
+import Contato, { IContato } from '../../models/Contato';
+import PersonalTrainer, { IPersonalTrainer } from '../../models/PersonalTrainer'; // Importe seu modelo PersonalTrainer
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/publicContatosRoutes.ts] Ficheiro carregado ---");
+
+// Rota: POST /api/public/contatos/registrar/:tokenPersonal
+// Usada pela página pública de inscrição do aluno via link do personal
+router.post('/registrar/:tokenPersonal', async (req: Request, res: Response, next: NextFunction) => {
+  const { tokenPersonal } = req.params;
+  const { nomeCompleto, email, telefone, dataNascimento, genero } = req.body;
+
+  console.log(`[POST /registrar/${tokenPersonal}] Tentativa de registrar novo contato. Email: ${email}`);
+
+  if (!tokenPersonal) {
+    return res.status(400).json({ mensagem: "Token do personal não fornecido." });
+  }
+
+  // Validações básicas (podem ser aprimoradas com Zod ou similar no backend também)
+  if (!nomeCompleto || typeof nomeCompleto !== 'string' || nomeCompleto.trim().length < 3) {
+    return res.status(400).json({ mensagem: "Nome completo é obrigatório e deve ter pelo menos 3 caracteres." });
+  }
+  if (!email || typeof email !== 'string' || !/.+\@.+\..+/.test(email)) {
+    return res.status(400).json({ mensagem: "E-mail inválido." });
+  }
+
+  try {
+    // 1. Encontrar o Personal Trainer pelo tokenCadastroAluno
+    const personal = await PersonalTrainer.findOne({ tokenCadastroAluno: tokenPersonal }).select('nome _id'); // Seleciona apenas nome e _id
+    if (!personal) {
+      console.warn(`[POST /registrar/${tokenPersonal}] Personal não encontrado com este token.`);
+      return res.status(404).json({ mensagem: "Link de cadastro inválido ou personal não encontrado." });
+    }
+
+    // 2. (Opcional, mas recomendado) Verificar se já existe um contato 'novo' com este email para este personal
+    // O middleware pre-save no modelo Contato já pode estar fazendo isso.
+    // Se não, você pode adicionar a lógica aqui:
+    const contatoExistente = await Contato.findOne({
+        email: email.toLowerCase().trim(),
+        personalId: personal._id,
+        status: 'novo'
+    });
+
+    if (contatoExistente) {
+        console.log(`[POST /registrar/${tokenPersonal}] Contato com email ${email} já existe para o personal ${personal._id} com status 'novo'.`);
+        // Você pode decidir atualizar o contato existente ou apenas informar que já foi registrado.
+        // Por simplicidade, vamos apenas informar.
+        return res.status(200).json({ mensagem: `Você já demonstrou interesse. O personal ${personal.nome} entrará em contato.` });
+    }
+
+    // 3. Criar o novo Contato
+    const novoContato = new Contato({
+      nomeCompleto: nomeCompleto.trim(),
+      email: email.toLowerCase().trim(),
+      telefone: telefone?.trim(),
+      dataNascimento: dataNascimento ? new Date(dataNascimento) : undefined,
+      genero,
+      personalId: personal._id,
+      status: 'novo', // Status inicial
+      origemToken: tokenPersonal,
+    });
+
+    await novoContato.save(); // O middleware pre-save do Contato será acionado aqui
+
+    console.log(`[POST /registrar/${tokenPersonal}] Novo contato ID: ${novoContato._id} registrado para Personal ID: ${personal._id}.`);
+
+    // 4. (Próximo Passo - Fase 2.1) Enviar e-mail de notificação para o personal
+    // Ex: await enviarEmailNotificacaoNovoContato(personal.email, novoContato.nomeCompleto, novoContato.email);
+
+    // 5. (Próximo Passo - Fase 2.1) Enviar e-mail de confirmação para o interessado (aluno)
+    // Ex: await enviarEmailConfirmacaoInteresse(novoContato.email, novoContato.nomeCompleto, personal.nome);
+
+    res.status(201).json({ mensagem: "Interesse registrado com sucesso! Em breve, seu personal entrará em contato." });
+
+  } catch (error: any) {
+    console.error(`[POST /registrar/${tokenPersonal}] Erro ao registrar contato:`, error);
+    if (error.status === 409) { // Erro customizado do middleware pre-save
+        return res.status(409).json({ mensagem: error.message });
+    }
+    if (error.name === 'ValidationError') {
+      const mensagens = Object.values(error.errors).map((el: any) => el.message);
+      return res.status(400).json({ mensagem: mensagens.join(', ') });
+    }
+    next(error); // Passa para o error handler global
+  }
+});
+
+// Não se esqueça de adicionar este router ao seu arquivo principal de rotas do servidor (ex: server/routes.ts)
+// Exemplo:
+// import publicContatosRoutes from './src/routes/publicContatosRoutes';
+// router.use('/api/public/contatos', publicContatosRoutes);
+
+export default router;
+
+==== ./server/src/routes/sessionsRoutes.ts ====
+
+// server/src/routes/sessionsRoutes.ts
+import express, { Response, NextFunction } from 'express';
+import mongoose, { Types } from 'mongoose';
+import { authenticateToken, AuthenticatedRequest } from '../../middlewares/authenticateToken';
+import Sessao, { ISessaoLean, ISessaoDocument, TipoCompromisso, TIPOS_COMPROMISSO, OpcaoPSE, OPCOES_PSE } from '../../models/Sessao'; // Import completo, incluindo PSE
+import Aluno from '../../models/Aluno'; // Usado para verificar se aluno pertence ao personal
+import Treino, { ITreino } from '../../models/Treino'; // Importar Treino para lógica de conclusão
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/sessionsRoutes.ts] Ficheiro carregado (vCorrigida para personalId/alunoId e PATCH) ---");
+
+// GET /api/sessions - Listar sessões com filtros
+router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const personalIdFromToken = req.user?.id;
+    const { alunoId: alunoIdParam, date, populateStudent, limit, tipoCompromisso: tipoCompromissoQuery } = req.query;
+
+    if (!personalIdFromToken) {
+        return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    }
+
+    try {
+        const queryFilter: any = { personalId: new Types.ObjectId(personalIdFromToken) };
+
+        if (alunoIdParam && typeof alunoIdParam === 'string' && Types.ObjectId.isValid(alunoIdParam)) {
+            queryFilter.alunoId = new Types.ObjectId(alunoIdParam);
+        }
+
+        if (date && typeof date === 'string') {
+            const targetDate = new Date(date);
+            if (!isNaN(targetDate.getTime())) {
+                const inicioDia = new Date(targetDate);
+                inicioDia.setHours(0, 0, 0, 0);
+                const fimDia = new Date(targetDate);
+                fimDia.setHours(23, 59, 59, 999);
+                queryFilter.sessionDate = { $gte: inicioDia, $lte: fimDia };
+            }
+        }
+
+        if (tipoCompromissoQuery && typeof tipoCompromissoQuery === 'string' && TIPOS_COMPROMISSO.includes(tipoCompromissoQuery as TipoCompromisso)) {
+            queryFilter.tipoCompromisso = tipoCompromissoQuery;
+        }
+        
+        let query = Sessao.find(queryFilter).sort({ sessionDate: 1 });
+
+        if (populateStudent === 'true') {
+            query = query.populate('alunoId', 'nome _id'); 
+        }
+        query = query.populate('rotinaId', 'titulo _id'); // Popular rotinaId também, se presente
+        
+        if (limit && typeof limit === 'string' && !isNaN(parseInt(limit))) {
+            query = query.limit(parseInt(limit));
+        }
+
+        const sessoes = await query.lean<ISessaoLean[]>(); 
+        res.json(sessoes);
+
+    } catch (error) {
+        console.error("[GET /api/sessions] Erro ao buscar sessões:", error);
+        next(error);
+    }
+});
+
+// POST /api/sessions - Criar uma nova sessão
+router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const personalIdFromToken = req.user?.id;
+    const { alunoId, sessionDate, tipoCompromisso, notes, status, rotinaId, diaDeTreinoId, diaDeTreinoIdentificador } = req.body; 
+
+    if (!personalIdFromToken) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if (!alunoId || !sessionDate || !status || !tipoCompromisso) {
+        return res.status(400).json({ mensagem: "Campos alunoId, sessionDate, status e tipoCompromisso são obrigatórios." });
+    }
+    if (!Types.ObjectId.isValid(alunoId)) return res.status(400).json({ mensagem: "ID do aluno inválido." });
+    if (!TIPOS_COMPROMISSO.includes(tipoCompromisso as TipoCompromisso)) return res.status(400).json({ mensagem: `Tipo de compromisso inválido.` });
+    if (rotinaId && !Types.ObjectId.isValid(rotinaId)) return res.status(400).json({ mensagem: "ID da rotina inválido." });
+    // diaDeTreinoId pode ser qualquer string se não for ObjectId, ou validar se for ObjectId
+    if (diaDeTreinoId && typeof diaDeTreinoId === 'string' && !Types.ObjectId.isValid(diaDeTreinoId)) {
+         // Se você espera que diaDeTreinoId seja sempre um ObjectId válido quando presente
+         // return res.status(400).json({ mensagem: "ID do dia de treino inválido." });
+    }
+    
+    const validDate = new Date(sessionDate);
+    if (isNaN(validDate.getTime())) return res.status(400).json({ mensagem: "Formato de sessionDate inválido." });
+
+    try {
+        const personalObjectId = new Types.ObjectId(personalIdFromToken);
+        const alunoObjectId = new Types.ObjectId(alunoId);
+
+        const aluno = await Aluno.findOne({ _id: alunoObjectId, trainerId: personalObjectId }); 
+        if (!aluno) return res.status(403).json({ mensagem: "Este aluno não pertence a você ou não foi encontrado." });
+
+        const novaSessaoDoc = new Sessao({
+            personalId: personalObjectId,
+            alunoId: alunoObjectId,      
+            sessionDate: validDate,
+            tipoCompromisso,
+            notes,
+            status,
+            rotinaId: rotinaId ? new Types.ObjectId(rotinaId) : null,
+            diaDeTreinoId: diaDeTreinoId ? new Types.ObjectId(diaDeTreinoId) : null, 
+            diaDeTreinoIdentificador: diaDeTreinoIdentificador || null,
+        });
+
+        await novaSessaoDoc.save();
+        
+        const sessaoPopulada = await Sessao.findById(novaSessaoDoc._id)
+                                        .populate('alunoId', 'nome _id') 
+                                        .populate('rotinaId', 'titulo _id') 
+                                        .lean<ISessaoLean>(); 
+        res.status(201).json(sessaoPopulada);
+    } catch (error: any) {
+        if (error.name === 'ValidationError') return res.status(400).json({ mensagem: "Erro de validação", detalhes: error.errors });
+        next(error);
+    }
+});
+
+// PUT /api/sessions/:sessionId - Atualizar uma sessão
+router.put('/:sessionId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const personalIdFromToken = req.user?.id;
+    const { sessionId } = req.params;
+    const { status, notes, sessionDate, tipoCompromisso, rotinaId, diaDeTreinoId, diaDeTreinoIdentificador, alunoId: alunoIdBody, pseAluno, comentarioAluno } = req.body;
+
+    if (!personalIdFromToken) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if (!Types.ObjectId.isValid(sessionId)) return res.status(400).json({ mensagem: "ID da sessão inválido." });
+
+    const updateData: Partial<ISessaoDocument> = {};
+    if (status && ['pending', 'confirmed', 'completed', 'cancelled', 'skipped'].includes(status)) {
+        updateData.status = status as ISessaoDocument['status'];
+    }
+    if (notes !== undefined) updateData.notes = notes;
+    if (sessionDate) {
+        const validDate = new Date(sessionDate);
+        if (isNaN(validDate.getTime())) return res.status(400).json({ mensagem: "Formato de sessionDate inválido." });
+        updateData.sessionDate = validDate;
+    }
+    if (tipoCompromisso && TIPOS_COMPROMISSO.includes(tipoCompromisso as TipoCompromisso)) {
+        updateData.tipoCompromisso = tipoCompromisso;
+    } else if (tipoCompromisso) {
+        return res.status(400).json({ mensagem: `Tipo de compromisso inválido.` });
+    }
+    if (rotinaId !== undefined) {
+        updateData.rotinaId = rotinaId && Types.ObjectId.isValid(rotinaId) ? new Types.ObjectId(rotinaId) : null;
+    }
+    if (diaDeTreinoId !== undefined) {
+        updateData.diaDeTreinoId = diaDeTreinoId && Types.ObjectId.isValid(diaDeTreinoId) ? new Types.ObjectId(diaDeTreinoId) : null;
+    }
+    if (diaDeTreinoIdentificador !== undefined) {
+        updateData.diaDeTreinoIdentificador = diaDeTreinoIdentificador;
+    }
+    if (alunoIdBody && Types.ObjectId.isValid(alunoIdBody)) {
+        const aluno = await Aluno.findOne({ _id: new Types.ObjectId(alunoIdBody), trainerId: new Types.ObjectId(personalIdFromToken) });
+        if (!aluno) return res.status(403).json({ mensagem: "Aluno selecionado não pertence a você ou não foi encontrado." });
+        updateData.alunoId = new Types.ObjectId(alunoIdBody);
+    }
+    if (pseAluno !== undefined) updateData.pseAluno = pseAluno as OpcaoPSE || null;
+    if (comentarioAluno !== undefined) updateData.comentarioAluno = comentarioAluno;
+
+    
+    if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ mensagem: "Nenhum dado válido para atualização fornecido." });
+    }
+
+    const mongoTransactionSession = await mongoose.startSession(); // Iniciar sessão para transação
+    try {
+        mongoTransactionSession.startTransaction();
+        const personalObjectId = new Types.ObjectId(personalIdFromToken);
+        const sessionObjectId = new Types.ObjectId(sessionId);
+
+        // Buscar a sessão ANTES de tentar atualizá-la para pegar o estado anterior (se necessário)
+        const sessaoExistente = await Sessao.findOne({ _id: sessionObjectId, personalId: personalObjectId }).session(mongoTransactionSession);
+        if (!sessaoExistente) {
+            await mongoTransactionSession.abortTransaction();
+            return res.status(404).json({ mensagem: "Sessão não encontrada ou você não tem permissão para atualizá-la." });
+        }
+
+        const jaEstavaConcluida = sessaoExistente.status === 'completed';
+
+        // Aplicar atualizações
+        Object.assign(sessaoExistente, updateData);
+        if (updateData.status === 'completed' && !sessaoExistente.concluidaEm) {
+            sessaoExistente.concluidaEm = new Date();
+        }
+        await sessaoExistente.save({ session: mongoTransactionSession });
+
+        // Lógica para incrementar contador da rotina
+        if (updateData.status === 'completed' && !jaEstavaConcluida && sessaoExistente.rotinaId) {
+            const rotina: ITreino | null = await Treino.findById(sessaoExistente.rotinaId).session(mongoTransactionSession);
+            if (rotina) {
+                if (rotina.alunoId && rotina.alunoId.toString() !== sessaoExistente.alunoId.toString()) { // Comparar strings de ObjectIds
+                     await mongoTransactionSession.abortTransaction();
+                    return res.status(403).json({ message: "Acesso negado para modificar esta rotina (aluno não corresponde)." });
+                }
+                rotina.sessoesRotinaConcluidas = (rotina.sessoesRotinaConcluidas || 0) + 1;
+                await rotina.save({ session: mongoTransactionSession });
+            }
+        }
+        
+        await mongoTransactionSession.commitTransaction();
+        
+        const sessaoAtualizadaPopulada = await Sessao.findById(sessaoExistente._id)
+            .populate('alunoId', 'nome _id')
+            .populate('rotinaId', 'titulo _id')
+            .lean<ISessaoLean>();
+
+        res.json(sessaoAtualizadaPopulada);
+
+    } catch (error: any) {
+        if (mongoTransactionSession.inTransaction()) await mongoTransactionSession.abortTransaction();
+        if (error.name === 'ValidationError') return res.status(400).json({ mensagem: "Erro de validação", detalhes: error.errors });
+        next(error);
+    } finally {
+        await mongoTransactionSession.endSession();
+    }
+});
+
+// DELETE /api/sessions/:sessionId - Excluir uma sessão
+router.delete('/:sessionId', authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const personalIdFromToken = req.user?.id;
+    const { sessionId } = req.params;
+
+    if(!personalIdFromToken) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if(!Types.ObjectId.isValid(sessionId)) return res.status(400).json({ mensagem: "ID da sessão inválido." });
+
+    try {
+        const result = await Sessao.deleteOne({ _id: new Types.ObjectId(sessionId), personalId: new Types.ObjectId(personalIdFromToken) });
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ mensagem: "Sessão não encontrada ou você não tem permissão para excluí-la." });
+        }
+        res.status(200).json({ mensagem: "Sessão excluída com sucesso." });
+    } catch (error) {
+        next(error);
+    }
+});
+
+export default router;
+==== ./server/src/routes/treinos.ts ====
+
+// server/src/routes/treinos.ts
+import express, { Request, Response, NextFunction } from "express";
+import mongoose, { Types } from "mongoose";
+import Treino, {
+    ITreino,
+    IDiaDeTreino, 
+    IExercicioEmDiaDeTreino, 
+    ITreinoPopuladoLean,
+    TIPOS_ORGANIZACAO_ROTINA
+} from "../../models/Treino";
+import Aluno from "../../models/Aluno";
+import PastaTreino from '../../models/Pasta';
+import { authenticateToken, AuthenticatedRequest } from '../../middlewares/authenticateToken';
+import { isValid as isDateValid, parseISO } from 'date-fns';
+
+const router = express.Router();
+
+console.log("--- [server/src/routes/treinos.ts] Ficheiro carregado (CORREÇÃO v5.8 - Associar qualquer rotina) ---");
+
+// --- INTERFACES PARA INPUT DE DADOS (REQ.BODY) ---
+interface ExercicioInputData {
+    exercicioId: string;
+    series?: string;
+    repeticoes?: string;
+    carga?: string;
+    descanso?: string;
+    observacoes?: string;
+    ordemNoDia: number;
+    concluido?: boolean;
+    _id?: string; // Para manter o ID do subdocumento ao editar
+}
+
+interface DiaDeTreinoInputData {
+    identificadorDia: string;
+    nomeSubFicha?: string;
+    ordemNaRotina: number;
+    exerciciosDoDia: ExercicioInputData[];
+    _id?: string; // Para manter o ID do subdocumento ao editar
+}
+
+// --- FUNÇÕES DE VALIDAÇÃO AUXILIARES ---
+const isValidExercicioInput = (ex: any): ex is ExercicioInputData => {
+    return ex &&
+           typeof ex.exercicioId === 'string' && mongoose.Types.ObjectId.isValid(ex.exercicioId) &&
+           typeof ex.ordemNoDia === 'number' &&
+           (ex._id === undefined || ex._id === null || (typeof ex._id === 'string' && mongoose.Types.ObjectId.isValid(ex._id)));
+};
+
+const isValidDiaDeTreinoInput = (dia: any): dia is DiaDeTreinoInputData => {
+    return dia &&
+           typeof dia.identificadorDia === 'string' && dia.identificadorDia.trim() !== '' &&
+           typeof dia.ordemNaRotina === 'number' &&
+           Array.isArray(dia.exerciciosDoDia) && dia.exerciciosDoDia.every(isValidExercicioInput) &&
+           (dia._id === undefined || dia._id === null || (typeof dia._id === 'string' && mongoose.Types.ObjectId.isValid(dia._id)));
+};
+
+
+// --- ROTA POST /api/treinos - CRIAR ROTINA DE TREINO ---
+router.post("/", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const criadorId = req.user?.id;
+    const {
+        titulo, descricao, tipo, tipoOrganizacaoRotina,
+        alunoId: alunoIdInput, pastaId: pastaIdInputString, statusModelo,
+        dataValidade: dataValidadeInputString, totalSessoesRotinaPlanejadas: totalSessoesInput,
+        diasDeTreino: diasDeTreinoInput
+    } = req.body as Partial<Omit<ITreino, 'diasDeTreino' | 'criadorId' | 'sessoesRotinaConcluidas' | 'criadoEm' | 'atualizadoEm'> & { diasDeTreino: DiaDeTreinoInputData[] }>;
+
+
+    if (!criadorId) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if (!titulo || !titulo.trim()) return res.status(400).json({ mensagem: "Título obrigatório." });
+    if (!tipo || !["modelo", "individual"].includes(tipo)) return res.status(400).json({ mensagem: "Tipo inválido." });
+    if (!tipoOrganizacaoRotina || !TIPOS_ORGANIZACAO_ROTINA.includes(tipoOrganizacaoRotina)) {
+        return res.status(400).json({ mensagem: `Tipo de organização inválido.` });
+    }
+    if (diasDeTreinoInput !== undefined && !Array.isArray(diasDeTreinoInput)) {
+        return res.status(400).json({ mensagem: "'diasDeTreino' deve ser um array." });
+    }
+    if (Array.isArray(diasDeTreinoInput) && diasDeTreinoInput.length > 0 && diasDeTreinoInput.some(dia => !isValidDiaDeTreinoInput(dia))) {
+        return res.status(400).json({ mensagem: "Se 'diasDeTreino' for fornecido e não vazio, cada dia deve ser válido e seus exercícios também." });
+    }
+    
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+        const criadorObjectId = new Types.ObjectId(criadorId);
+        
+        const diasDeTreinoParaSalvar: Partial<IDiaDeTreino>[] = (diasDeTreinoInput || []).map((dia: DiaDeTreinoInputData) => {
+            const exerciciosFormatados: Partial<IExercicioEmDiaDeTreino>[] = dia.exerciciosDoDia.map((ex: ExercicioInputData) => {
+                return {
+                    exercicioId: new Types.ObjectId(ex.exercicioId),
+                    series: ex.series, repeticoes: ex.repeticoes, carga: ex.carga,
+                    descanso: ex.descanso, observacoes: ex.observacoes,
+                    ordemNoDia: ex.ordemNoDia, concluido: ex.concluido ?? false,
+                    // _id será gerado pelo Mongoose se não existir, ou mantido se ex._id for válido
+                    ...(ex._id && Types.ObjectId.isValid(ex._id) && { _id: new Types.ObjectId(ex._id) })
+                };
+            });
+            const diaData: Partial<IDiaDeTreino> = {
+                identificadorDia: dia.identificadorDia.trim(),
+                nomeSubFicha: dia.nomeSubFicha?.trim(),
+                ordemNaRotina: dia.ordemNaRotina,
+                exerciciosDoDia: exerciciosFormatados as any,
+                 // _id será gerado pelo Mongoose se não existir, ou mantido se dia._id for válido
+                ...(dia._id && Types.ObjectId.isValid(dia._id) && { _id: new Types.ObjectId(dia._id) })
+            };
+            return diaData;
+        });
+
+        const novaRotinaData: Partial<ITreino> = {
+            titulo: titulo.trim(),
+            descricao: descricao?.trim(),
+            tipo: tipo,
+            tipoOrganizacaoRotina: tipoOrganizacaoRotina,
+            criadorId: criadorObjectId,
+            diasDeTreino: diasDeTreinoParaSalvar as any,
+            sessoesRotinaConcluidas: 0,
+        };
+
+        if (tipo === "modelo") {
+            novaRotinaData.statusModelo = statusModelo && ["ativo", "rascunho", "arquivado"].includes(statusModelo as string) ? (statusModelo as "ativo" | "rascunho" | "arquivado") : "rascunho";
+            const pastaIdInput = pastaIdInputString as string | undefined | null;
+            if (pastaIdInput && pastaIdInput !== "nenhuma" && pastaIdInput !== null && pastaIdInput !== "") {
+                if (!mongoose.Types.ObjectId.isValid(pastaIdInput)) {
+                    await session.abortTransaction(); return res.status(400).json({ mensagem: "ID da pasta inválido." });
+                }
+                const pastaObjectId = new Types.ObjectId(pastaIdInput);
+                const pastaExiste = await PastaTreino.findOne({ _id: pastaObjectId, criadorId: criadorObjectId }).session(session);
+                if (!pastaExiste) {
+                    await session.abortTransaction(); return res.status(404).json({ mensagem: "Pasta não encontrada." });
+                }
+                novaRotinaData.pastaId = pastaObjectId;
+                const proximaOrdem = await Treino.countDocuments({ criadorId: criadorObjectId, tipo: 'modelo', pastaId: pastaObjectId }).session(session);
+                novaRotinaData.ordemNaPasta = proximaOrdem;
+            } else {
+                novaRotinaData.pastaId = null;
+                const proximaOrdem = await Treino.countDocuments({ criadorId: criadorObjectId, tipo: 'modelo', pastaId: null }).session(session);
+                novaRotinaData.ordemNaPasta = proximaOrdem;
+            }
+        } else if (tipo === "individual") {
+            const alunoIdVal = alunoIdInput as string | undefined;
+            if (!alunoIdVal || !mongoose.Types.ObjectId.isValid(alunoIdVal)) {
+                await session.abortTransaction(); return res.status(400).json({ mensagem: "ID do aluno inválido." });
+            }
+            const alunoObjectId = new Types.ObjectId(alunoIdVal);
+            const alunoExiste = await Aluno.findOne({ _id: alunoObjectId, trainerId: criadorObjectId }).session(session);
+            if (!alunoExiste) {
+                await session.abortTransaction(); return res.status(404).json({ mensagem: "Aluno não encontrado ou não pertence a este personal." });
+            }
+            novaRotinaData.alunoId = alunoObjectId;
+            
+            const dataValidadeStr = dataValidadeInputString as string | undefined;
+            if (dataValidadeStr) {
+                const parsedDate = parseISO(dataValidadeStr);
+                if (!isDateValid(parsedDate)) {
+                    await session.abortTransaction(); return res.status(400).json({ mensagem: "Data de validade inválida." });
+                }
+                novaRotinaData.dataValidade = parsedDate;
+            } else {
+                novaRotinaData.dataValidade = null;
+            }
+
+            const totalSessoesVal = totalSessoesInput as number | string | null | undefined;
+            if (totalSessoesVal !== undefined && totalSessoesVal !== null && String(totalSessoesVal).trim() !== '') {
+                const parsedSessoes = parseInt(String(totalSessoesVal), 10);
+                if (isNaN(parsedSessoes) || parsedSessoes < 0) {
+                    await session.abortTransaction(); return res.status(400).json({ mensagem: "Número de sessões inválido." });
+                }
+                novaRotinaData.totalSessoesRotinaPlanejadas = parsedSessoes;
+            } else {
+                novaRotinaData.totalSessoesRotinaPlanejadas = null;
+            }
+        }
+
+        const rotinaCriada = new Treino(novaRotinaData);
+        await rotinaCriada.save({ session });
+        await session.commitTransaction();
+
+        const rotinaPopulada = await Treino.findById(rotinaCriada._id)
+            .populate({ path: 'diasDeTreino.exerciciosDoDia.exercicioId', select: 'nome grupoMuscular urlVideo tipo categoria descricao _id' })
+            .populate({ path: 'alunoId', select: 'nome email _id fotoPerfil' })
+            .populate({ path: 'pastaId', select: 'nome _id' })
+            .populate({ path: 'criadorId', select: 'nome email _id' })
+            .lean<ITreinoPopuladoLean>();
+        res.status(201).json(rotinaPopulada);
+
+    } catch (error: any) {
+        if (session.inTransaction()) await session.abortTransaction();
+        if (error.name === 'ValidationError') {
+            const mensagens = Object.values(error.errors).map((el: any) => el.message);
+            return res.status(400).json({ mensagem: `Erro de validação: ${mensagens.join(', ')}` });
+        }
+        if (error instanceof mongoose.Error.CastError && error.path === '_id') {
+             return res.status(400).json({ mensagem: `ID inválido fornecido: ${error.value}` });
+        }
+        console.error("Erro ao criar rotina:", error);
+        next(error);
+    } finally {
+        if (session.inTransaction()) await session.abortTransaction(); // Garante abort em caso de erro não pego
+        await session.endSession();
+    }
+});
+
+
+// --- POST /api/treinos/associar-modelo ---
+router.post("/associar-modelo", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const criadorId = req.user?.id;
+    const {
+        fichaModeloId, // ID da rotina base (modelo ou individual)
+        alunoId,       // ID do aluno para quem a nova rotina individual será criada
+        dataValidade: dataValidadeInput,
+        totalSessoesRotinaPlanejadas: totalSessoesInput
+    } = req.body;
+
+    if (!criadorId) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if (!mongoose.Types.ObjectId.isValid(fichaModeloId as string) || !mongoose.Types.ObjectId.isValid(alunoId as string)) {
+        return res.status(400).json({ mensagem: "IDs inválidos para rotina base ou aluno." });
+    }
+
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+        const criadorObjectId = new Types.ObjectId(criadorId);
+        const fichaBaseObjectId = new Types.ObjectId(fichaModeloId as string);
+        const alunoObjectId = new Types.ObjectId(alunoId as string);
+
+        // Busca a rotina base (pode ser modelo ou individual)
+        const rotinaBaseParaCopia = await Treino.findOne({ 
+            _id: fichaBaseObjectId, 
+            criadorId: criadorObjectId // Garante que a rotina base pertence ao personal
+        })
+        .lean<ITreino | null>() // ITreino é a interface do Mongoose
+        .session(session);
+
+        if (!rotinaBaseParaCopia) {
+            await session.abortTransaction(); 
+            // Mensagem de erro mais genérica
+            return res.status(404).json({ mensagem: "Rotina base para cópia não encontrada ou não pertence a você." });
+        }
+
+        const alunoDoc = await Aluno.findOne({ _id: alunoObjectId, trainerId: criadorObjectId }).session(session);
+        if (!alunoDoc) {
+            await session.abortTransaction(); return res.status(404).json({ mensagem: "Aluno não encontrado ou não pertence a este personal." });
+        }
+
+        // Mapeia os dias de treino e exercícios da rotina base
+        const diasDeTreinoCopiados: Partial<IDiaDeTreino>[] = (rotinaBaseParaCopia.diasDeTreino || []).map(dia => {
+            const exerciciosCopiados: Partial<IExercicioEmDiaDeTreino>[] = (dia.exerciciosDoDia || []).map(ex => {
+                return {
+                    exercicioId: ex.exercicioId, // Mantém o ID do exercício da biblioteca
+                    series: ex.series, 
+                    repeticoes: ex.repeticoes, 
+                    carga: ex.carga,
+                    descanso: ex.descanso, 
+                    observacoes: ex.observacoes, 
+                    ordemNoDia: ex.ordemNoDia, 
+                    concluido: false, // Nova rotina começa com exercícios não concluídos
+                };
+            });
+            return {
+                identificadorDia: dia.identificadorDia, 
+                nomeSubFicha: dia.nomeSubFicha, 
+                ordemNaRotina: dia.ordemNaRotina,
+                exerciciosDoDia: exerciciosCopiados as any, // Tipagem para Mongoose
+            };
+        });
+
+        // Prepara o payload para a nova rotina individual
+        const novaRotinaIndividualPayload: Partial<ITreino> = {
+            titulo: `${rotinaBaseParaCopia.titulo} (Aluno: ${alunoDoc.nome.split(' ')[0]})`,
+            descricao: rotinaBaseParaCopia.descricao, 
+            tipo: 'individual', // A nova rotina é SEMPRE individual
+            tipoOrganizacaoRotina: rotinaBaseParaCopia.tipoOrganizacaoRotina,
+            alunoId: alunoObjectId, 
+            criadorId: criadorObjectId,
+            diasDeTreino: diasDeTreinoCopiados as any, // Tipagem para Mongoose
+            pastaId: null, // Rotinas individuais não pertencem a pastas de modelos
+            statusModelo: undefined, // Não se aplica a rotinas individuais
+            ordemNaPasta: undefined, // Não se aplica
+            sessoesRotinaConcluidas: 0, // Começa com zero
+        };
+
+        // Processa data de validade e total de sessões, se fornecidos
+        const dataValidadeStr = dataValidadeInput as string | undefined;
+        if (dataValidadeStr) {
+            const parsedDate = parseISO(dataValidadeStr);
+            if (isDateValid(parsedDate)) novaRotinaIndividualPayload.dataValidade = parsedDate;
+            else { await session.abortTransaction(); return res.status(400).json({ mensagem: "Data de validade inválida fornecida."}); }
+        }
+        const totalSessoesVal = totalSessoesInput as number | string | null | undefined;
+        if (totalSessoesVal !== undefined && totalSessoesVal !== null && String(totalSessoesVal).trim() !== '') {
+            const parsedSessoes = parseInt(String(totalSessoesVal), 10);
+            if (!isNaN(parsedSessoes) && parsedSessoes >= 0) novaRotinaIndividualPayload.totalSessoesRotinaPlanejadas = parsedSessoes;
+            else { await session.abortTransaction(); return res.status(400).json({ mensagem: "Número de sessões inválido fornecido."}); }
+        }
+
+        const novaRotinaIndividual = new Treino(novaRotinaIndividualPayload);
+        await novaRotinaIndividual.save({ session });
+        await session.commitTransaction();
+
+        const rotinaPopulada = await Treino.findById(novaRotinaIndividual._id)
+            .populate({ path: 'diasDeTreino.exerciciosDoDia.exercicioId', select: 'nome grupoMuscular urlVideo _id tipo categoria descricao' })
+            .populate({ path: 'alunoId', select: 'nome email _id fotoPerfil' })
+            .populate({ path: 'criadorId', select: 'nome email _id' })
+            .lean<ITreinoPopuladoLean>();
+        res.status(201).json(rotinaPopulada);
+
+    } catch (error: any) {
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error("Erro ao associar/copiar rotina:", error); // Log de erro mais genérico
+        next(error);
+    } finally {
+        if (session.inTransaction()) await session.abortTransaction(); // Garante abort em caso de erro não pego
+        await session.endSession();
+    }
+});
+
+
+// --- GET /api/treinos ---
+router.get("/", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const criadorId = req.user?.id;
+    const { tipo, alunoId, pastaId: pastaIdInput, limit, statusModelo } = req.query;
+
+    if (!criadorId) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    const criadorObjectId = new Types.ObjectId(criadorId);
+    const queryFilter: mongoose.FilterQuery<ITreino> = { criadorId: criadorObjectId };
+
+    if (tipo && typeof tipo === 'string' && ['modelo', 'individual'].includes(tipo)) {
+        queryFilter.tipo = tipo as "modelo" | "individual";
+    }
+    if (queryFilter.tipo === 'individual' && alunoId && typeof alunoId === 'string' && mongoose.Types.ObjectId.isValid(alunoId)) {
+        queryFilter.alunoId = new Types.ObjectId(alunoId);
+    }
+    if (queryFilter.tipo === 'modelo') {
+        const pastaIdStr = pastaIdInput as string | undefined;
+        if (pastaIdStr && pastaIdStr !== "sem-pasta" && pastaIdStr !== "null" && mongoose.Types.ObjectId.isValid(pastaIdStr)) {
+            queryFilter.pastaId = new Types.ObjectId(pastaIdStr);
+        } else if (pastaIdStr === 'null' || pastaIdStr === 'sem-pasta') {
+            queryFilter.pastaId = null;
+        }
+        if (statusModelo && typeof statusModelo === 'string' && ['ativo', 'rascunho', 'arquivado'].includes(statusModelo)) {
+            queryFilter.statusModelo = statusModelo as "ativo" | "rascunho" | "arquivado";
+        }
+    }
+
+    let mongoQuery = Treino.find(queryFilter);
+    mongoQuery = mongoQuery.populate({ path: 'diasDeTreino.exerciciosDoDia.exercicioId', select: 'nome grupoMuscular urlVideo _id tipo categoria descricao' });
+    mongoQuery = mongoQuery.populate({ path: 'alunoId', select: 'nome email _id fotoPerfil' });
+    mongoQuery = mongoQuery.populate({ path: 'pastaId', select: 'nome _id' });
+    mongoQuery = mongoQuery.populate({ path: 'criadorId', select: 'nome email _id' });
+
+    if (queryFilter.tipo === 'modelo') {
+        mongoQuery = mongoQuery.sort({ pastaId: 1, ordemNaPasta: 1, atualizadoEm: -1 });
+    } else if (queryFilter.tipo === 'individual') {
+        mongoQuery = mongoQuery.sort({ atualizadoEm: -1, criadoEm: -1 });
+    } else {
+        mongoQuery = mongoQuery.sort({ tipo: 1, pastaId: 1, ordemNaPasta: 1, atualizadoEm: -1 });
+    }
+
+    if (limit && typeof limit === 'string' && !isNaN(parseInt(limit))) {
+        mongoQuery = mongoQuery.limit(parseInt(limit));
+    }
+    const rotinas = await mongoQuery.lean<ITreinoPopuladoLean[]>();
+    res.status(200).json(rotinas);
+  } catch (error: any) {
+    console.error("Erro ao buscar rotinas:", error);
+    next(error);
+  }
+});
+
+// --- GET /api/treinos/aluno/:alunoId ---
+router.get("/aluno/:alunoId", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const { alunoId } = req.params;
+  const criadorIdToken = req.user?.id;
+  try {
+    if (!criadorIdToken) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if (!mongoose.Types.ObjectId.isValid(alunoId)) return res.status(400).json({ mensagem: "ID do aluno inválido." });
+
+    const alunoObjectId = new Types.ObjectId(alunoId);
+    const criadorObjectId = new Types.ObjectId(criadorIdToken);
+    const alunoDoc = await Aluno.findOne({ _id: alunoObjectId, trainerId: criadorObjectId });
+    if (!alunoDoc) return res.status(404).json({ mensagem: "Aluno não encontrado ou não pertence a este personal." });
+
+    const queryFilter: mongoose.FilterQuery<ITreino> = {
+        alunoId: alunoObjectId,
+        criadorId: criadorObjectId, // Garante que o personal só veja rotinas que ele criou para o aluno
+        tipo: 'individual'
+    };
+    const rotinasDoAluno = await Treino.find(queryFilter)
+      .populate({ path: 'diasDeTreino.exerciciosDoDia.exercicioId', select: 'nome grupoMuscular urlVideo _id tipo categoria descricao'})
+      .populate({ path: 'alunoId', select: 'nome email _id fotoPerfil' })
+      .populate({ path: 'criadorId', select: 'nome email _id' })
+      .sort({ atualizadoEm: -1, criadoEm: -1 })
+      .lean<ITreinoPopuladoLean[]>();
+    res.status(200).json(rotinasDoAluno);
+  } catch (error: any) {
+    console.error("Erro ao buscar rotinas do aluno:", error);
+    next(error);
+  }
+});
+
+// --- GET /api/treinos/:id ---
+router.get("/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const { id: rotinaId } = req.params;
+    const criadorId = req.user?.id;
+    if (!criadorId) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if (!mongoose.Types.ObjectId.isValid(rotinaId)) return res.status(400).json({ mensagem: "ID da rotina inválido." });
+    try {
+        const rotinaObjectId = new Types.ObjectId(rotinaId);
+        const criadorObjectId = new Types.ObjectId(criadorId);
+        const rotina = await Treino.findOne({ _id: rotinaObjectId, criadorId: criadorObjectId })
+            .populate({ path: 'diasDeTreino.exerciciosDoDia.exercicioId', select: 'nome grupoMuscular urlVideo tipo categoria descricao _id' })
+            .populate({ path: 'alunoId', select: 'nome email _id fotoPerfil' })
+            .populate({ path: 'pastaId', select: 'nome _id' })
+            .populate({ path: 'criadorId', select: 'nome email _id' })
+            .lean<ITreinoPopuladoLean>();
+        if (!rotina) return res.status(404).json({ mensagem: "Rotina não encontrada ou acesso não permitido." });
+        res.status(200).json(rotina);
+    } catch (error: any) {
+        console.error(`Erro ao buscar rotina ${rotinaId}:`, error);
+        next(error);
+    }
+});
+
+// --- ROTA PUT /api/treinos/:id - ATUALIZAR ROTINA ---
+router.put("/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const { id: rotinaId } = req.params;
+    const criadorId = req.user?.id;
+    const updates = req.body as Partial<Omit<ITreino, 'criadorId' | 'criadoEm' | 'atualizadoEm'> & { diasDeTreino?: DiaDeTreinoInputData[] | null }>;
+
+    if (!criadorId) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if (!mongoose.Types.ObjectId.isValid(rotinaId)) return res.status(400).json({ mensagem: "ID da rotina inválido." });
+
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+        const rotinaObjectId = new Types.ObjectId(rotinaId);
+        const criadorObjectId = new Types.ObjectId(criadorId);
+        const rotinaParaAtualizar = await Treino.findOne({ _id: rotinaObjectId, criadorId: criadorObjectId }).session(session);
+
+        if (!rotinaParaAtualizar) {
+            await session.abortTransaction();
+            return res.status(404).json({ mensagem: "Rotina não encontrada ou não tem permissão para editá-la." });
+        }
+
+        // Atualizar campos básicos
+        if (updates.titulo && typeof updates.titulo === 'string') rotinaParaAtualizar.titulo = updates.titulo.trim();
+        if (updates.descricao !== undefined) rotinaParaAtualizar.descricao = updates.descricao?.trim() ?? undefined;
+        if (updates.tipoOrganizacaoRotina && TIPOS_ORGANIZACAO_ROTINA.includes(updates.tipoOrganizacaoRotina)) {
+            rotinaParaAtualizar.tipoOrganizacaoRotina = updates.tipoOrganizacaoRotina;
+        }
+
+        // Atualizar campos específicos do tipo
+        if (rotinaParaAtualizar.tipo === 'modelo') {
+            if (updates.statusModelo && ["ativo", "rascunho", "arquivado"].includes(updates.statusModelo as string)) {
+                rotinaParaAtualizar.statusModelo = updates.statusModelo as "ativo" | "rascunho" | "arquivado";
+            }
+            if (updates.pastaId !== undefined) { // Permite desassociar (pastaId: null)
+                const pastaIdInputString = updates.pastaId as string | null;
+                if (pastaIdInputString === null || pastaIdInputString === "nenhuma" || pastaIdInputString === "") {
+                    rotinaParaAtualizar.pastaId = null;
+                } else if (mongoose.Types.ObjectId.isValid(pastaIdInputString)) {
+                    const pastaObjectId = new Types.ObjectId(pastaIdInputString);
+                    const pastaValida = await PastaTreino.findOne({ _id: pastaObjectId, criadorId: criadorObjectId }).session(session);
+                    if (!pastaValida) {
+                         await session.abortTransaction(); return res.status(400).json({ mensagem: "Pasta de destino inválida ou não pertence a você." });
+                    }
+                    rotinaParaAtualizar.pastaId = pastaObjectId;
+                } else {
+                     await session.abortTransaction(); return res.status(400).json({ mensagem: "ID da pasta fornecido é inválido." });
+                }
+            }
+        } else if (rotinaParaAtualizar.tipo === 'individual') {
+            if (updates.dataValidade !== undefined) {
+                 const dataValidadeInputString = updates.dataValidade as string | null;
+                 if (dataValidadeInputString === null || dataValidadeInputString === '') {
+                    rotinaParaAtualizar.dataValidade = null;
+                 } else {
+                    const parsedDate = parseISO(dataValidadeInputString); // Espera ISO string do frontend
+                    if (isDateValid(parsedDate)) {
+                       rotinaParaAtualizar.dataValidade = parsedDate;
+                    } else {
+                        await session.abortTransaction(); return res.status(400).json({ mensagem: "Data de validade inválida." });
+                    }
+                 }
+            }
+            if (updates.totalSessoesRotinaPlanejadas !== undefined) {
+                const totalSessoesInputVal = updates.totalSessoesRotinaPlanejadas as number | string | null;
+                if (totalSessoesInputVal === null || String(totalSessoesInputVal).trim() === '') {
+                    rotinaParaAtualizar.totalSessoesRotinaPlanejadas = null;
+                } else {
+                    const parsedSessoes = parseInt(String(totalSessoesInputVal), 10);
+                    if (!isNaN(parsedSessoes) && parsedSessoes >= 0) {
+                        rotinaParaAtualizar.totalSessoesRotinaPlanejadas = parsedSessoes;
+                    } else {
+                        await session.abortTransaction(); return res.status(400).json({ mensagem: "Número de sessões inválido." });
+                    }
+                }
+            }
+            if (updates.sessoesRotinaConcluidas !== undefined && typeof updates.sessoesRotinaConcluidas === 'number' && updates.sessoesRotinaConcluidas >=0) {
+                rotinaParaAtualizar.sessoesRotinaConcluidas = updates.sessoesRotinaConcluidas;
+            }
+        }
+
+        // Atualizar diasDeTreino e seus exercícios
+        if (updates.diasDeTreino !== undefined) {
+            if (updates.diasDeTreino === null || (Array.isArray(updates.diasDeTreino) && updates.diasDeTreino.length === 0)) {
+                rotinaParaAtualizar.diasDeTreino = new Types.DocumentArray([]) as Types.DocumentArray<IDiaDeTreino>;
+            } else if (Array.isArray(updates.diasDeTreino) && updates.diasDeTreino.length > 0) {
+                if (updates.diasDeTreino.some(dia => !isValidDiaDeTreinoInput(dia))) {
+                    await session.abortTransaction();
+                    return res.status(400).json({ mensagem: "Um ou mais dias de treino no payload de atualização são inválidos." });
+                }
+                
+                const novosDiasDeTreinoProcessados = updates.diasDeTreino.map((diaInput: DiaDeTreinoInputData) => {
+                    const exerciciosFormatados = (diaInput.exerciciosDoDia || []).map((exInput: ExercicioInputData) => {
+                        const exData: Partial<IExercicioEmDiaDeTreino> & { _id?: Types.ObjectId } = {
+                            exercicioId: new Types.ObjectId(exInput.exercicioId),
+                            series: exInput.series, repeticoes: exInput.repeticoes, carga: exInput.carga,
+                            descanso: exInput.descanso, observacoes: exInput.observacoes,
+                            ordemNoDia: exInput.ordemNoDia, concluido: exInput.concluido ?? false,
+                        };
+                        // Manter _id do subdocumento exercício se estiver editando um existente
+                        if (exInput._id && Types.ObjectId.isValid(exInput._id)) {
+                            exData._id = new Types.ObjectId(exInput._id);
+                        }
+                        return exData;
+                    });
+
+                    const diaData: Partial<IDiaDeTreino> & { _id?: Types.ObjectId } = {
+                        identificadorDia: diaInput.identificadorDia.trim(),
+                        nomeSubFicha: diaInput.nomeSubFicha?.trim(),
+                        ordemNaRotina: diaInput.ordemNaRotina,
+                        exerciciosDoDia: exerciciosFormatados as any,
+                    };
+                    // Manter _id do subdocumento dia se estiver editando um existente
+                    if (diaInput._id && Types.ObjectId.isValid(diaInput._id)) {
+                        diaData._id = new Types.ObjectId(diaInput._id);
+                    }
+                    return diaData;
+                });
+                // Substitui completamente o array de diasDeTreino
+                rotinaParaAtualizar.diasDeTreino = novosDiasDeTreinoProcessados as Types.DocumentArray<IDiaDeTreino>;
+            } else {
+                await session.abortTransaction();
+                return res.status(400).json({ mensagem: "'diasDeTreino' deve ser um array, null para limpar, ou undefined para não alterar." });
+            }
+        }
+
+        await rotinaParaAtualizar.save({ session });
+        await session.commitTransaction();
+
+        const rotinaAtualizadaPopulada = await Treino.findById(rotinaId)
+             .populate({ path: 'diasDeTreino.exerciciosDoDia.exercicioId', select: 'nome grupoMuscular urlVideo tipo categoria descricao _id' })
+             .populate({ path: 'alunoId', select: 'nome email _id fotoPerfil' })
+             .populate({ path: 'pastaId', select: 'nome _id' })
+             .populate({ path: 'criadorId', select: 'nome email _id' })
+             .lean<ITreinoPopuladoLean>();
+        res.status(200).json(rotinaAtualizadaPopulada);
+
+    } catch (error: any) {
+        if (session.inTransaction()) await session.abortTransaction();
+        if (error instanceof mongoose.Error.CastError && error.path === '_id') {
+             return res.status(400).json({ mensagem: `ID inválido fornecido: ${error.value}` });
+        }
+        console.error(`Erro ao atualizar rotina ${rotinaId}:`, error);
+        next(error);
+    } finally {
+        if (session.inTransaction()) await session.abortTransaction(); // Garante abort em caso de erro não pego
+        await session.endSession();
+    }
+});
+
+// --- DELETE /api/treinos/:id ---
+router.delete("/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const { id } = req.params;
+  const criadorId = req.user?.id;
+  if (!criadorId) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ mensagem: "ID da rotina inválido." });
+  
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const rotinaObjectId = new Types.ObjectId(id);
+    const criadorObjectId = new Types.ObjectId(criadorId);
+
+    const rotinaParaExcluir = await Treino.findOne({ _id: rotinaObjectId, criadorId: criadorObjectId }).session(session);
+    if (!rotinaParaExcluir) {
+      await session.abortTransaction(); return res.status(404).json({ mensagem: "Rotina não encontrada ou não tem permissão para excluí-la." });
+    }
+
+    const resultadoExclusao = await Treino.deleteOne({ _id: rotinaObjectId, criadorId: criadorObjectId }, { session });
+    if (resultadoExclusao.deletedCount === 0) {
+        await session.abortTransaction(); return res.status(404).json({ mensagem: "Erro ao excluir: Rotina não encontrada (após verificação inicial)." });
+    }
+    await session.commitTransaction();
+    res.status(200).json({ mensagem: "Rotina excluída com sucesso." });
+  } catch (error: any) {
+    if (session.inTransaction()) await session.abortTransaction();
+    console.error(`Erro ao excluir rotina ${id}:`, error);
+    next(error);
+  } finally {
+    if (session.inTransaction()) await session.abortTransaction(); // Garante abort em caso de erro não pego
+    await session.endSession();
+  }
+});
+
+
+// --- ROTA PUT /api/treinos/reordenar ---
+router.put("/reordenar", authenticateToken, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const criadorId = req.user?.id;
+    const { idContexto, novaOrdemFichaIds } = req.body; // idContexto é o pastaId
+
+    if (!criadorId) return res.status(401).json({ mensagem: "Usuário não autenticado." });
+    if (!Array.isArray(novaOrdemFichaIds) || novaOrdemFichaIds.some((id: any) => typeof id !== 'string' || !mongoose.Types.ObjectId.isValid(id))) {
+        return res.status(400).json({ mensagem: "'novaOrdemFichaIds' deve ser um array de IDs de rotina válidos." });
+    }
+
+    let pastaObjectIdQuery: mongoose.Types.ObjectId | null = null;
+    const idContextoStr = idContexto as string | undefined;
+
+    if (idContextoStr && idContextoStr !== "sem-pasta" && idContextoStr !== "null" && idContextoStr !== "") {
+        if (!mongoose.Types.ObjectId.isValid(idContextoStr)) {
+            return res.status(400).json({ mensagem: "ID do contexto (pastaId) fornecido é inválido." });
+        }
+        pastaObjectIdQuery = new Types.ObjectId(idContextoStr);
+    } else if (idContextoStr === "sem-pasta" || idContextoStr === null || idContextoStr === "") {
+        // Se o contexto for "sem-pasta" ou nulo, significa que estamos reordenando rotinas fora de qualquer pasta.
+        pastaObjectIdQuery = null;
+    }
+    // Se idContexto não for fornecido, pode ser um erro ou uma lógica não prevista.
+    // Por segurança, se idContexto é undefined e não "sem-pasta" ou "null", pode ser melhor retornar um erro.
+    // No entanto, a lógica atual permite undefined passar, resultando em pastaObjectIdQuery = null.
+
+    const session = await mongoose.startSession();
+    try {
+        session.startTransaction();
+        const criadorObjectId = new Types.ObjectId(criadorId);
+
+        // Se estamos reordenando dentro de uma pasta, verifica se a pasta existe e pertence ao usuário
+        if (pastaObjectIdQuery) {
+            const pastaExiste = await PastaTreino.findOne({ _id: pastaObjectIdQuery, criadorId: criadorObjectId }).session(session);
+            if (!pastaExiste) {
+                await session.abortTransaction();
+                return res.status(404).json({ mensagem: "Pasta de contexto não encontrada ou não pertence a você." });
+            }
+        }
+
+        // Atualiza a ordemNaPasta para cada rotina na nova ordem
+        const operations = novaOrdemFichaIds.map((fichaId: string, index: number) => {
+            return Treino.updateOne(
+                { 
+                    _id: new Types.ObjectId(fichaId), 
+                    criadorId: criadorObjectId, 
+                    tipo: 'modelo', // A reordenação de 'ordemNaPasta' só faz sentido para rotinas modelo
+                    pastaId: pastaObjectIdQuery // Condição para rotinas na pasta especificada ou fora de pastas
+                },
+                { $set: { ordemNaPasta: index } },
+                { session }
+            ).exec();
+        });
+
+        const results = await Promise.all(operations);
+        
+        // Verifica se todas as operações encontraram e modificaram um documento.
+        // Se alguma rotina não foi encontrada (matchedCount === 0), pode indicar um problema (ex: rotina não é 'modelo' ou não está na pasta correta).
+        if (results.some(r => r.matchedCount === 0)) {
+            // Se alguma rotina não foi encontrada, pode ser que ela não exista, não seja do tipo 'modelo',
+            // ou não esteja na pastaId correta (ou fora de pastas, se pastaObjectIdQuery for null).
+            // É importante que o frontend envie apenas IDs de rotinas que realmente pertencem ao contexto (pastaId) sendo reordenado.
+            console.warn("[Reordenar Rotinas] Algumas rotinas não foram encontradas ou não puderam ser atualizadas. Resultados:", results);
+            // Não necessariamente um erro fatal se algumas não foram encontradas, mas um aviso.
+            // Se for crítico que TODAS sejam atualizadas, então aborte a transação.
+            // Por ora, vamos permitir que continue, mas logar.
+            // Se for um erro, descomente a linha abaixo:
+            // await session.abortTransaction();
+            // return res.status(404).json({ mensagem: "Erro ao reordenar: uma ou mais rotinas não foram encontradas nos critérios especificados (verifique ID, tipo 'modelo' e pastaId)." });
+        }
+
+        await session.commitTransaction();
+        res.status(200).json({ mensagem: "Rotinas modelo reordenadas com sucesso." });
+    } catch (error: any) {
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error("Erro ao reordenar rotinas:", error);
+        next(error);
+    } finally {
+        if (session.inTransaction()) await session.abortTransaction(); // Garante abort em caso de erro não pego
+        await session.endSession();
+    }
+});
+
+export default router;
+
+==== ./server/storage.ts ====
+
+import {
+  users, type User, type InsertUser,
+  students, type Student, type InsertStudent,
+  exercises, type Exercise, type InsertExercise,
+  workoutPlans, type WorkoutPlan, type InsertWorkoutPlan,
+  workoutExercises, type WorkoutExercise, type InsertWorkoutExercise,
+  studentWorkouts, type StudentWorkout, type InsertStudentWorkout,
+  activityLogs, type ActivityLog, type InsertActivityLog,
+  sessions, type Session, type InsertSession
+} from "@shared/schema";
+
+export interface IStorage {
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+
+  getStudents(trainerId: number): Promise<Student[]>;
+  getStudent(id: number): Promise<Student | undefined>;
+  createStudent(student: InsertStudent): Promise<Student>;
+  updateStudent(id: number, student: Partial<InsertStudent>): Promise<Student | undefined>;
+  deleteStudent(id: number): Promise<boolean>;
+
+  getExercises(): Promise<Exercise[]>;
+  getExercise(id: number): Promise<Exercise | undefined>;
+  createExercise(exercise: InsertExercise): Promise<Exercise>;
+  updateExercise(id: number, exercise: Partial<InsertExercise>): Promise<Exercise | undefined>;
+  deleteExercise(id: number): Promise<boolean>;
+
+  getWorkoutPlans(trainerId: number): Promise<WorkoutPlan[]>;
+  getWorkoutPlan(id: number): Promise<WorkoutPlan | undefined>;
+  createWorkoutPlan(workoutPlan: InsertWorkoutPlan): Promise<WorkoutPlan>;
+  updateWorkoutPlan(id: number, workoutPlan: Partial<InsertWorkoutPlan>): Promise<WorkoutPlan | undefined>;
+  deleteWorkoutPlan(id: number): Promise<boolean>;
+
+  getWorkoutExercises(workoutPlanId: number): Promise<WorkoutExercise[]>;
+  createWorkoutExercise(workoutExercise: InsertWorkoutExercise): Promise<WorkoutExercise>;
+  updateWorkoutExercise(id: number, workoutExercise: Partial<InsertWorkoutExercise>): Promise<WorkoutExercise | undefined>;
+  deleteWorkoutExercise(id: number): Promise<boolean>;
+
+  getStudentWorkouts(studentId: number): Promise<StudentWorkout[]>;
+  getStudentWorkout(id: number): Promise<StudentWorkout | undefined>;
+  createStudentWorkout(studentWorkout: InsertStudentWorkout): Promise<StudentWorkout>;
+  updateStudentWorkout(id: number, studentWorkout: Partial<InsertStudentWorkout>): Promise<StudentWorkout | undefined>;
+  deleteStudentWorkout(id: number): Promise<boolean>;
+
+  getActivityLogs(trainerId: number, limit?: number): Promise<ActivityLog[]>;
+  createActivityLog(activityLog: InsertActivityLog): Promise<ActivityLog>;
+
+  getSessions(trainerId: number): Promise<Session[]>;
+  getSessionsByDate(trainerId: number, date: Date): Promise<Session[]>;
+  getSession(id: number): Promise<Session | undefined>;
+  createSession(session: InsertSession): Promise<Session>;
+  updateSession(id: number, session: Partial<InsertSession>): Promise<Session | undefined>;
+  deleteSession(id: number): Promise<boolean>;
+}
+
+export class MemStorage implements IStorage {
+  private users = new Map<number, User>();
+  private students = new Map<number, Student>();
+  private exercises = new Map<number, Exercise>();
+  private workoutPlans = new Map<number, WorkoutPlan>();
+  private workoutExercises = new Map<number, WorkoutExercise>();
+  private studentWorkouts = new Map<number, StudentWorkout>();
+  private activityLogs = new Map<number, ActivityLog>();
+  private sessions = new Map<number, Session>();
+
+  private userIdCounter = 1;
+  private studentIdCounter = 1;
+  private exerciseIdCounter = 1;
+  private workoutPlanIdCounter = 1;
+  private workoutExerciseIdCounter = 1;
+  private studentWorkoutIdCounter = 1;
+  private activityLogIdCounter = 1;
+  private sessionIdCounter = 1;
+
+  constructor() {
+    this.createUser({
+      username: "admin",
+      password: "admin",
+      firstName: "John",
+      lastName: "Smith",
+      email: "john@trainpro.com",
+      role: "trainer"
+    });
+  }
+
+  async getUser(id: number) {
+    return this.users.get(id);
+  }
+
+  async getUserByUsername(username: string) {
+    return Array.from(this.users.values()).find(u => u.username === username);
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const id = this.userIdCounter++;
+    const newUser: User = { ...user, id };
+    this.users.set(id, newUser);
+    return newUser;
+  }
+
+  async getStudents(trainerId: number) {
+    return Array.from(this.students.values()).filter(s => s.trainerId === trainerId);
+  }
+
+  async getStudent(id: number) {
+    return this.students.get(id);
+  }
+
+  async createStudent(student: InsertStudent): Promise<Student> {
+    const id = this.studentIdCounter++;
+    const newStudent: Student = { ...student, id };
+    this.students.set(id, newStudent);
+    return newStudent;
+  }
+
+  async updateStudent(id: number, student: Partial<InsertStudent>): Promise<Student | undefined> {
+    const existing = this.students.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...student };
+    this.students.set(id, updated);
+    return updated;
+  }
+
+  async deleteStudent(id: number): Promise<boolean> {
+    return this.students.delete(id);
+  }
+
+  async getExercises() {
+    return Array.from(this.exercises.values());
+  }
+
+  async getExercise(id: number) {
+    return this.exercises.get(id);
+  }
+
+  async createExercise(exercise: InsertExercise): Promise<Exercise> {
+    const id = this.exerciseIdCounter++;
+    const newExercise: Exercise = { ...exercise, id };
+    this.exercises.set(id, newExercise);
+    return newExercise;
+  }
+
+  async updateExercise(id: number, exercise: Partial<InsertExercise>): Promise<Exercise | undefined> {
+    const existing = this.exercises.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...exercise };
+    this.exercises.set(id, updated);
+    return updated;
+  }
+
+  async deleteExercise(id: number): Promise<boolean> {
+    return this.exercises.delete(id);
+  }
+
+  async getWorkoutPlans(trainerId: number) {
+    return Array.from(this.workoutPlans.values()).filter(w => w.trainerId === trainerId);
+  }
+
+  async getWorkoutPlan(id: number) {
+    return this.workoutPlans.get(id);
+  }
+
+  async createWorkoutPlan(plan: InsertWorkoutPlan): Promise<WorkoutPlan> {
+    const id = this.workoutPlanIdCounter++;
+    const newPlan: WorkoutPlan = { ...plan, id };
+    this.workoutPlans.set(id, newPlan);
+    return newPlan;
+  }
+
+  async updateWorkoutPlan(id: number, plan: Partial<InsertWorkoutPlan>): Promise<WorkoutPlan | undefined> {
+    const existing = this.workoutPlans.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...plan };
+    this.workoutPlans.set(id, updated);
+    return updated;
+  }
+
+  async deleteWorkoutPlan(id: number): Promise<boolean> {
+    return this.workoutPlans.delete(id);
+  }
+
+  async getWorkoutExercises(workoutPlanId: number) {
+    return Array.from(this.workoutExercises.values())
+      .filter(w => w.workoutPlanId === workoutPlanId)
+      .sort((a, b) => a.order - b.order);
+  }
+
+  async createWorkoutExercise(w: InsertWorkoutExercise): Promise<WorkoutExercise> {
+    const id = this.workoutExerciseIdCounter++;
+    const newW: WorkoutExercise = { ...w, id };
+    this.workoutExercises.set(id, newW);
+    return newW;
+  }
+
+  async updateWorkoutExercise(id: number, w: Partial<InsertWorkoutExercise>): Promise<WorkoutExercise | undefined> {
+    const existing = this.workoutExercises.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...w };
+    this.workoutExercises.set(id, updated);
+    return updated;
+  }
+
+  async deleteWorkoutExercise(id: number): Promise<boolean> {
+    return this.workoutExercises.delete(id);
+  }
+
+  async getStudentWorkouts(studentId: number) {
+    return Array.from(this.studentWorkouts.values()).filter(w => w.studentId === studentId);
+  }
+
+  async getStudentWorkout(id: number) {
+    return this.studentWorkouts.get(id);
+  }
+
+  async createStudentWorkout(w: InsertStudentWorkout): Promise<StudentWorkout> {
+    const id = this.studentWorkoutIdCounter++;
+    const newW: StudentWorkout = { ...w, id };
+    this.studentWorkouts.set(id, newW);
+    return newW;
+  }
+
+  async updateStudentWorkout(id: number, w: Partial<InsertStudentWorkout>): Promise<StudentWorkout | undefined> {
+    const existing = this.studentWorkouts.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...w };
+    this.studentWorkouts.set(id, updated);
+    return updated;
+  }
+
+  async deleteStudentWorkout(id: number): Promise<boolean> {
+    return this.studentWorkouts.delete(id);
+  }
+
+  async getActivityLogs(trainerId: number, limit = 10) {
+    return Array.from(this.activityLogs.values())
+      .filter(log => log.trainerId === trainerId)
+      .sort((a, b) => +new Date(b.timestamp) - +new Date(a.timestamp))
+      .slice(0, limit);
+  }
+
+  async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
+    const id = this.activityLogIdCounter++;
+    const newLog: ActivityLog = { ...log, id };
+    this.activityLogs.set(id, newLog);
+    return newLog;
+  }
+
+  async getSessions(trainerId: number) {
+    return Array.from(this.sessions.values()).filter(s => s.trainerId === trainerId);
+  }
+
+  async getSessionsByDate(trainerId: number, date: Date) {
+    const start = new Date(date.setHours(0, 0, 0, 0));
+    const end = new Date(date.setHours(23, 59, 59, 999));
+    return Array.from(this.sessions.values()).filter(s => {
+      const d = new Date(s.sessionDate);
+      return s.trainerId === trainerId && d >= start && d <= end;
+    }).sort((a, b) => +new Date(a.sessionDate) - +new Date(b.sessionDate));
+  }
+
+  async getSession(id: number) {
+    return this.sessions.get(id);
+  }
+
+  async createSession(session: InsertSession): Promise<Session> {
+    const id = this.sessionIdCounter++;
+    const newSession: Session = { ...session, id };
+    this.sessions.set(id, newSession);
+    return newSession;
+  }
+
+  async updateSession(id: number, session: Partial<InsertSession>): Promise<Session | undefined> {
+    const existing = this.sessions.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...session };
+    this.sessions.set(id, updated);
+    return updated;
+  }
+
+  async deleteSession(id: number): Promise<boolean> {
+    return this.sessions.delete(id);
+  }
+}
+
+export const storage = new MemStorage();
+
+==== ./server/vite.ts ====
+
+import express, { type Express } from "express";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { createServer as createViteServer, createLogger } from "vite";
+import { type Server } from "http";
+import viteConfig from "../vite.config";
+import { nanoid } from "nanoid";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const viteLogger = createLogger();
+
+export function log(message: string, source = "express") {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
+
+export async function setupVite(app: Express, server: Server) {
+  const serverOptions = {
+    middlewareMode: true,
+    hmr: { server },
+    allowedHosts: ["all"], // ✅ Corrigido para array ["all"] — conforme exigido
+  };
+
+  const vite = await createViteServer({
+    ...viteConfig,
+    configFile: false,
+    server: serverOptions,
+    customLogger: {
+      ...viteLogger,
+      error: (msg, options) => {
+        viteLogger.error(msg, options);
+        process.exit(1);
+      },
+    },
+    appType: "custom",
+  });
+
+  app.use(vite.middlewares);
+
+  app.use("*", async (req, res, next) => {
+    const url = req.originalUrl;
+
+    try {
+      const clientTemplate = path.resolve(__dirname, "..", "client", "index.html");
+
+      let template = await fs.promises.readFile(clientTemplate, "utf-8");
+      template = template.replace(
+        `src="/src/main.tsx"`,
+        `src="/src/main.tsx?v=${nanoid()}"`
+      );
+      const page = await vite.transformIndexHtml(url, template);
+      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+    } catch (e) {
+      vite.ssrFixStacktrace(e as Error);
+      next(e);
+    }
+  });
+}
+
+export function serveStatic(app: Express) {
+  const distPath = path.resolve(__dirname, "public");
+
+  if (!fs.existsSync(distPath)) {
+    throw new Error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`
+    );
+  }
+
+  app.use(express.static(distPath));
+
+  app.use("*", (_req, res) => {
+    res.sendFile(path.resolve(distPath, "index.html"));
+  });
+}
+
+==== ./shared/schema.ts ====
+
+// src/shared/schema.ts
+
+import { z } from "zod";
+
+// Aluno (Student)
+export const insertStudentSchema = z.object({
+  nome: z.string(),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  birthDate: z.string(),
+  gender: z.string(),
+  goal: z.string(),
+  weight: z.number(),
+  height: z.number(),
+  startDate: z.string(),
+  trainerId: z.number(),
+  status: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// Usuário (User)
+export const insertUserSchema = z.object({
+  username: z.string(),
+  password: z.string(),
+  firstName: z.string(),
+  lastName: z.string(),
+  email: z.string().email(),
+  role: z.string(),
+});
+
+// Exercício (Exercise)
+export const insertExerciseSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  muscleGroup: z.string(),
+  category: z.string(),
+});
+
+// Plano de treino (Workout Plan)
+export const insertWorkoutPlanSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  trainerId: z.number(),
+  status: z.string(),
+});
+
+// Exercício dentro de um plano (Workout Exercise)
+export const insertWorkoutExerciseSchema = z.object({
+  workoutPlanId: z.number(),
+  exerciseId: z.number(),
+  sets: z.number(),
+  reps: z.number(),
+  rest: z.number(),
+  notes: z.string().optional(),
+});
+
+// Relacionamento aluno <-> treino (Student Workout)
+export const insertStudentWorkoutSchema = z.object({
+  studentId: z.number(),
+  workoutPlanId: z.number(),
+  progress: z.number().optional(),
+});
+
+// Registro de atividade (Activity Log)
+export const insertActivityLogSchema = z.object({
+  trainerId: z.number(),
+  activityType: z.string(),
+  details: z.any(),
+  timestamp: z.date(),
+});
+
+// Sessão (Session)
+export const insertSessionSchema = z.object({
+  trainerId: z.number(),
+  studentId: z.number(),
+  sessionDate: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  status: z.string(),
+  notes: z.string().optional(),
+});
+
+==== ./shared/types/express/index.d.ts ====
+
+// Caminho: server/src/types/express/index.d.ts
+// Certifique-se de que este caminho é incluído pelo seu tsconfig.json
+
+// Importa DecodedTokenPayload diretamente do seu local original.
+// Ajuste o caminho relativo se necessário.
+// Partindo de server/src/types/express/index.d.ts para server/middlewares/authenticateToken.ts
+import { DecodedTokenPayload } from '../../../middlewares/authenticateToken';
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: DecodedTokenPayload; // Usa a interface importada diretamente
+    }
+  }
+}
+
+// Linha vazia intencional para garantir que o arquivo seja tratado como um módulo.
+// Isso é importante para que 'declare global' funcione como esperado.
+export {};
+
+==== ./shared/types/personal.ts ====
+
+// shared/types/personal.ts
+
+// Interface para os detalhes completos de um PersonalTrainer, como retornado pela API (sem campos sensíveis)
+export interface PersonalDetalhes {
+    _id: string;
+    nome: string;
+    email: string;
+    role: 'Personal Trainer' | 'Admin'; // Roles permitidas
+    tokenCadastroAluno?: string;
+    statusAssinatura?: 'ativa' | 'inativa' | 'pendente_pagamento' | 'cancelada' | 'trial' | 'sem_assinatura';
+    limiteAlunos?: number;
+    dataInicioAssinatura?: string | Date; 
+    dataFimAssinatura?: string | Date;
+    idAssinaturaGateway?: string;
+    planoId?: string; // <<< CAMPO ADICIONADO AQUI
+    createdAt: string | Date;
+    updatedAt: string | Date;
+  }
+    
+  // Interface para os itens listados na tabela de personais (pode ser um subconjunto de PersonalDetalhes)
+  export interface PersonalListadoItem {
+    _id: string;
+    nome: string;
+    email: string;
+    role: 'Personal Trainer' | 'Admin';
+    createdAt: string | Date; 
+    statusAssinatura?: string;
+    // planoId não é usado na listagem da tabela, então não precisa ser adicionado aqui
+    // a menos que você decida exibir essa informação na tabela no futuro.
+  }
+  
+==== ./shared/types/sessaoTypes.ts ====
+
+export const TIPOS_COMPROMISSO = ['avaliacao', 'checkin', 'treino_acompanhado', 'outro'] as const;
+export type TipoCompromisso = typeof TIPOS_COMPROMISSO[number];
+
+// Outras interfaces de Sessao/Compromisso que o frontend precise
+export interface CompromissoDataShareable { // Exemplo
+  _id: string;
+  sessionDate: string; 
+  tipoCompromisso: TipoCompromisso;
+  notes?: string;
+  status: "pending" | "confirmed" | "completed" | "cancelled";
+  studentId: { _id: string; nome: string; } | string; 
+  // trainerId não precisa ser exposto ao frontend se ele já sabe quem é o trainer
+}
+==== ./shared/types.ts ====
+
+// shared/types.ts
+
+// Interface básica para Aluno
+// Adicione outras propriedades conforme necessário
+export interface Aluno {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    // Adicione outros campos do aluno aqui (ex: dataNascimento, telefone, etc.)
+  }
+  
+  // Interface básica para Personal
+  // Adicione outras propriedades conforme necessário
+  export interface Personal {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    // Adicione outros campos do personal aqui
+  }
+  
+  // Interface para os detalhes de um exercício dentro da ficha de treino do aluno
+  export interface ExercicioFichaAluno {
+    exercicioId: { // Populated exercise details (assumindo que você popula)
+      _id: string;
+      nome: string;
+      grupoMuscular: string;
+      // Adicione outros campos do exercício que você popula
+    };
+    ordem: number;
+    series: string;
+    repeticoes: string;
+    carga?: string;
+    observacoes?: string;
+  }
+  
+  // Interface para o documento da Ficha de Treino do Aluno
+  export interface IFichaTreinoAluno {
+    _id: string;
+    alunoId: string; // Pode ser string se não for populado, ou Aluno se for populado
+    personalId: string; // Pode ser string se não for populado, ou Personal se for populado
+    nome: string;
+    descricao?: string;
+    exercicios: ExercicioFichaAluno[];
+    dataCriacao: string; // Use string se for ISO date string, ou Date se converter
+    dataAtualizacao: string; // Use string se for ISO date string, ou Date se converter
+  }
+  
+  // Adicione outras interfaces compartilhadas aqui (Exercicio, FichaModelo, etc.)
+  
+==== ./tailwind.config.ts ====
+
+import type { Config } from "tailwindcss";
+
+export default {
+  darkMode: ["class"],
+  content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
+  theme: {
+    extend: {
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      colors: {
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        chart: {
+          "1": "hsl(var(--chart-1))",
+          "2": "hsl(var(--chart-2))",
+          "3": "hsl(var(--chart-3))",
+          "4": "hsl(var(--chart-4))",
+          "5": "hsl(var(--chart-5))",
+        },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+        },
+      },
+      keyframes: {
+        "accordion-down": {
+          from: {
+            height: "0",
+          },
+          to: {
+            height: "var(--radix-accordion-content-height)",
+          },
+        },
+        "accordion-up": {
+          from: {
+            height: "var(--radix-accordion-content-height)",
+          },
+          to: {
+            height: "0",
+          },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+      },
+    },
+  },
+  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+} satisfies Config;

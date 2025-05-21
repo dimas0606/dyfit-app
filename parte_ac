@@ -1,0 +1,17 @@
+./client/src/components/ui/TesteBotao.tsx
+./client/src/components/ui/accordion.tsx
+./client/src/components/ui/alert-dialog.tsx
+./client/src/components/ui/alert.tsx
+./client/src/components/ui/aspect-ratio.tsx
+./client/src/components/ui/avatar.tsx
+./client/src/components/ui/badge.tsx
+./client/src/components/ui/breadcrumb.tsx
+./client/src/components/ui/button.tsx
+./client/src/components/ui/calendar.tsx
+./client/src/components/ui/card.tsx
+./client/src/components/ui/carousel.tsx
+./client/src/components/ui/chart.tsx
+./client/src/components/ui/checkbox.tsx
+./client/src/components/ui/collapsible.tsx
+./client/src/components/ui/command.tsx
+./client/src/components/ui/context-menu.tsx

@@ -1,0 +1,2048 @@
+
+==== ./client/src/types/treinoOuRotinaTypes.ts ====
+
+// client/src/types/treinoOuRotinaTypes.ts
+
+// Representa um exercício dentro de um dia de treino, como vem da API populado e lean
+// e como é usado internamente nos componentes de modal.
+export interface ExercicioEmDiaDeTreinoDetalhado {
+    _id?: string; // ID do subdocumento ExercicioEmDiaDeTreino no MongoDB (se já salvo)
+    exercicioId: { // Objeto do exercício da biblioteca, populado
+        _id: string;
+        nome: string;
+        grupoMuscular?: string;
+        urlVideo?: string;
+        descricao?: string;
+        categoria?: string;
+        tipo?: string; 
+    } | string; // Pode ser apenas o ID string se não estiver populado
+    series?: string;
+    repeticoes?: string;
+    carga?: string;
+    descanso?: string;
+    observacoes?: string;
+    ordemNoDia: number;
+    concluido?: boolean; // Usado pelo aluno ao realizar o treino
+}
+
+// Representa um dia de treino, como vem da API populado e lean
+export interface DiaDeTreinoDetalhado {
+    _id?: string; // ID do subdocumento DiaDeTreino no MongoDB (se já salvo)
+    identificadorDia: string;
+    nomeSubFicha?: string | null;
+    ordemNaRotina: number;
+    exerciciosDoDia?: ExercicioEmDiaDeTreinoDetalhado[];
+}
+
+// Interface para a Rotina/Ficha como listada na TreinosPage e usada no cache do React Query.
+// Também é a base para o que é passado para os modais de visualização e edição.
+export interface RotinaListagemItem {
+    _id: string;
+    titulo: string;
+    descricao?: string | null;
+    tipo: "modelo" | "individual";
+    // Detalhes do aluno e criador, podem vir populados da API
+    alunoId?: { _id: string; nome: string; email?: string; } | string | null; 
+    criadorId: { _id: string; nome: string; email?: string; } | string; 
+    
+    tipoOrganizacaoRotina: 'diasDaSemana' | 'numerico' | 'livre';
+    diasDeTreino?: DiaDeTreinoDetalhado[]; // Array de dias de treino detalhados
+
+    // Campos específicos de modelo
+    pastaId?: { _id: string; nome: string; } | string | null;
+    statusModelo?: "ativo" | "rascunho" | "arquivado" | null;
+    ordemNaPasta?: number;
+
+    // Campos específicos de individual
+    dataValidade?: string | Date | null; // API pode retornar string, mas Date é útil no form
+    totalSessoesRotinaPlanejadas?: number | null;
+    sessoesRotinaConcluidas?: number;
+
+    // Timestamps e virtuais (como vêm da API .lean())
+    criadoEm: string; 
+    atualizadoEm?: string; 
+    isExpirada?: boolean;
+    progressoRotina?: string;
+    __v?: number;
+}
+==== ./client/tailwind.config.ts ====
+
+import { type Config } from "tailwindcss";
+
+const config: Config = {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+      },
+      borderRadius: {
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      keyframes: {
+        "accordion-down": {
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
+        },
+        "accordion-up": {
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+      },
+      animation: {
+        "accordion-down": "accordion-down 0.2s ease-out",
+        "accordion-up": "accordion-up 0.2s ease-out",
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;
+
+==== ./client/vite.config.alt.ts ====
+
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const clientDir = path.dirname(fileURLToPath(import.meta.url));
+const vitePort = 5174;
+const gitpodWorkspaceUrl = process.env.GITPOD_WORKSPACE_URL;
+
+function getGitpodBaseDomain(): string | undefined {
+  if (!gitpodWorkspaceUrl) return undefined;
+  try {
+    return new URL(gitpodWorkspaceUrl).hostname;
+  } catch (e) {
+    return undefined;
+  }
+}
+const gitpodDomain = getGitpodBaseDomain();
+
+console.log("[vite.config.alt.ts] Rodando com porta:", vitePort);
+console.log("[vite.config.alt.ts] gitpodDomain (para HMR):", gitpodDomain);
+
+export default defineConfig({
+  root: clientDir, // 👈 ADICIONADO AQUI
+  plugins: [react()],
+  resolve: {
+    alias: { '@': path.resolve(clientDir, 'src') },
+  },
+  server: {
+    host: '0.0.0.0',
+    port: vitePort,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
+    },
+    allowedHosts: ['localhost', '.gitpod.io'],
+    hmr: gitpodWorkspaceUrl
+      ? {
+          host: gitpodDomain || undefined,
+          protocol: 'wss',
+        }
+      : undefined,
+  },
+  build: {
+    outDir: path.resolve(clientDir, 'dist'),
+    emptyOutDir: true,
+  },
+});
+
+==== ./client/vite.config.ts ====
+
+// client/vite.config.ts
+import { defineConfig, type ProxyOptions } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import type { IncomingMessage, ServerResponse } from 'http';
+
+const clientDir = path.dirname(fileURLToPath(import.meta.url));
+// Definir a porta do Vite aqui ou ler de .env se preferir
+const vitePort = 5173;
+const gitpodWorkspaceUrl = process.env.GITPOD_WORKSPACE_URL;
+
+// Função auxiliar para obter o host do Gitpod com a porta correta
+function getGitpodHostWithPort(port: number): string | undefined {
+    if (!gitpodWorkspaceUrl) return undefined;
+    try {
+        const url = new URL(gitpodWorkspaceUrl);
+        // Substitui o início 'https://' por 'https://<port>-'
+        return url.href.replace('https://', `https://${port}-`);
+    } catch (e) {
+        console.error("Erro ao processar GITPOD_WORKSPACE_URL:", e);
+        return undefined;
+    }
+}
+
+// Função auxiliar para obter apenas o domínio base do Gitpod
+function getGitpodBaseDomain(): string | undefined {
+     if (!gitpodWorkspaceUrl) return undefined;
+     try {
+        // Pega o hostname completo (ex: *.ws-us118.gitpod.io)
+        return new URL(gitpodWorkspaceUrl).hostname;
+     } catch (e) {
+         console.error("Erro ao processar GITPOD_WORKSPACE_URL:", e);
+         return undefined;
+     }
+}
+
+const viteHostUrl = getGitpodHostWithPort(vitePort);
+const gitpodDomain = getGitpodBaseDomain(); // Ex: *.ws-us118.gitpod.io
+
+console.log("[vite.config.ts] GITPOD_WORKSPACE_URL:", gitpodWorkspaceUrl);
+console.log("[vite.config.ts] viteHostUrl (Esperado):", viteHostUrl);
+console.log("[vite.config.ts] gitpodDomain (Base):", gitpodDomain);
+
+// ---> Helper para extrair apenas o hostname da URL completa com porta <---
+function getHostnameFromUrl(url?: string): string | undefined {
+    if (!url) return undefined;
+    try {
+        return new URL(url).hostname;
+    } catch {
+        return undefined;
+    }
+}
+const viteHostname = getHostnameFromUrl(viteHostUrl); // Ex: 5173-....ws-us118.gitpod.io
+// --------------------------------------------------------------------------
+
+export default defineConfig({
+  root: clientDir,
+  plugins: [react()],
+  resolve: {
+    alias: { '@': path.resolve(clientDir, 'src') },
+  },
+  server: {
+    host: '0.0.0.0', // Permite acesso de qualquer IP (importante para contêineres)
+    port: vitePort,
+    strictPort: true, // Garante que a porta especificada seja usada
+    proxy: {
+       '/api': { // Proxy para requisições /api para o backend
+          target: 'http://localhost:5000', // Seu backend Express rodando na porta 5000
+          changeOrigin: true, // Necessário para virtual hosted sites
+          secure: false, // Não estamos usando HTTPS para o proxy interno
+          ws: true, // Habilita proxy para WebSockets (se o backend usar)
+          configure: (proxy, _options) => {
+            proxy.on('error', (err, _req, _res) => console.error('[VITE PROXY ERROR]', err));
+            proxy.on('proxyReq', (proxyReq, req: IncomingMessage, _res) => console.log(`[VITE PROXY REQ] ${req.method} ${req.url} -> ${proxyReq.path}`));
+            proxy.on('proxyRes', (proxyRes, req: IncomingMessage, _res) => console.log(`[VITE PROXY RES] ${req.method} ${req.url} <- ${proxyRes.statusCode}`));
+          },
+       },
+    },
+    // Lista de hosts permitidos para acessar o servidor de desenvolvimento
+    allowedHosts: [
+        'localhost',
+        ...(viteHostname ? [viteHostname] : []), // Adiciona o hostname específico com porta (ex: 5173-*.gitpod.io)
+        ...(gitpodDomain ? [`.${gitpodDomain}`] : []), // Permite subdomínios (ex: *.ws-*.gitpod.io)
+        '.gitpod.io', // Um fallback mais genérico para o Gitpod
+    ],
+    // Configuração do Hot Module Replacement (HMR)
+    hmr: gitpodWorkspaceUrl && viteHostname ? {
+        protocol: 'wss', // Usar WebSocket Seguro
+        host: viteHostname, // O host que o Gitpod expõe para a porta do Vite (ex: 5173-dimas0606-dyfitapp-27c1nicna52.ws-us118.gitpod.io)
+        clientPort: 443, // O cliente deve se conectar à porta 443 (HTTPS padrão)
+                         // O Gitpod faz o roteamento interno para a porta correta do WebSocket do Vite
+    } : undefined, // Se não estiver no Gitpod, usa a configuração padrão do HMR
+  },
+  build: {
+    outDir: path.resolve(clientDir, 'dist'), // Diretório de saída para o build
+    emptyOutDir: true, // Limpa o diretório de saída antes de cada build
+  },
+});
+
+==== ./drizzle.config.ts ====
+
+import { defineConfig } from "drizzle-kit";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL, ensure the database is provisioned");
+}
+
+export default defineConfig({
+  out: "./migrations",
+  schema: "./shared/schema.ts",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL,
+  },
+});
+==== ./postcss.config.js ====
+
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+==== ./server/database.ts ====
+
+// server/database.ts
+import mongoose from "mongoose";
+import * as dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Reconstruindo __dirname para ambientes ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Carrega o .env da raiz do projeto (assumindo que database.ts está em server/)
+dotenv.config({ path: path.resolve(__dirname, "../.env") }); // Ajustado para ../.env
+
+let isConnected = false; // Flag para controlar o estado da conexão
+
+export async function connectToDatabase() {
+  if (isConnected && mongoose.connection.readyState >= 1) {
+    console.log("ℹ️  Já conectado ao MongoDB.");
+    return;
+  }
+
+  try {
+    const mongoUri = process.env.MONGODB_URI;
+
+    if (!mongoUri) {
+      throw new Error("❌ MONGODB_URI não definida no arquivo .env");
+    }
+
+    console.log("🟡 Conectando ao MongoDB Atlas...");
+    await mongoose.connect(mongoUri, {
+      dbName: "dyfit", // Nome do banco de dados especificado
+    });
+
+    isConnected = true;
+    console.log("✅ Conectado ao MongoDB Atlas com sucesso!");
+
+    mongoose.connection.on('error', (err) => {
+      console.error("❌ Erro na conexão com MongoDB após conexão inicial:", err);
+      isConnected = false;
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log("ℹ️  Desconectado do MongoDB.");
+      isConnected = false;
+    });
+
+  } catch (error) {
+    console.error("❌ Erro ao conectar ao MongoDB Atlas:", error);
+    process.exit(1);
+  }
+}
+
+export async function disconnectFromDatabase() {
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+    isConnected = false; // Atualiza o flag
+    console.log("ℹ️  Conexão com MongoDB fechada.");
+  } else {
+    console.log("ℹ️  Nenhuma conexão ativa para fechar.");
+  }
+}
+
+==== ./server/index.ts ====
+
+// server/index.ts
+import "dotenv/config";
+import express, { RequestHandler, ErrorRequestHandler } from "express";
+import cors from "cors";
+
+// --- Importação das Rotas ---
+import alunosRoutes from "./src/routes/alunos";
+import exerciciosRouter from "./src/routes/exercicios";
+import treinosRouter from "./src/routes/treinos";
+import authRoutes from "./src/routes/auth";
+import profileRoutes from "./src/routes/profile";
+import pastasTreinosRouter from "./src/routes/pastasTreinos";
+import dashboardGeralRoutes from "./src/routes/dashboardGeralRoutes";
+import sessionsRoutes from "./src/routes/sessionsRoutes";
+import activityLogsRoutes from "./src/routes/activityLogsRoutes";
+import publicContatosRoutes from "./src/routes/publicContatosRoutes";
+import adminRoutes from "./src/routes/adminRoutes";
+import convitePublicRoutes from "./src/routes/convitePublicRoutes";
+// ***** NOVA IMPORTAÇÃO PARA ROTAS DA API DO ALUNO *****
+import alunoApiRoutes from "./src/routes/alunoApiRoutes"; // <<< ADICIONADO
+
+// --- Importação dos Middlewares ---
+import { errorHandler } from "./middlewares/errorHandler";
+import { authenticateToken } from "./middlewares/authenticateToken"; // Para Personal/Admin
+import { authorizeAdmin } from "./middlewares/authorizeAdmin";
+// ***** NOVA IMPORTAÇÃO PARA MIDDLEWARE DE AUTENTICAÇÃO DO ALUNO *****
+import { authenticateAlunoToken } from "./middlewares/authenticateAlunoToken"; // <<< ADICIONADO
+
+// --- Conexão com Banco de Dados ---
+import { connectToDatabase } from "./database";
+
+async function startServer() {
+    await connectToDatabase();
+
+    const app = express();
+    const PORT = process.env.PORT || 5000;
+
+    app.use(cors({
+        origin: process.env.FRONTEND_URL || "http://localhost:5173",
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+        credentials: true,
+    }));
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+
+    app.use((req, res, next) => {
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+        next();
+    });
+    
+    console.log("🔄 Registrando rotas da API...");
+
+    // --- ROTAS PÚBLICAS (sem autenticação obrigatória global) ---
+    // Rotas de autenticação para Personal/Admin e Aluno, registro de aluno por convite, etc.
+    app.use("/api/auth", authRoutes); 
+    app.use("/api/public/contatos", publicContatosRoutes);
+    app.use("/api/convites", convitePublicRoutes); // Rotas públicas para validar e usar convites de Personal
+    console.log("✅ Rotas públicas (/api/auth, /api/public/contatos, /api/convites) registradas.");
+
+    // --- ROTAS PROTEGIDAS PARA ALUNOS ---
+    // Estas rotas exigem um token JWT de Aluno válido.
+    // O middleware authenticateAlunoToken verificará isso.
+    // Todas as rotas dentro de alunoApiRoutes (ex: /api/aluno/meus-treinos) serão protegidas.
+    app.use("/api/aluno", authenticateAlunoToken as RequestHandler, alunoApiRoutes); // <<< ADICIONADO
+    console.log("🧑‍🎓 Rotas da API do Aluno (/api/aluno) registradas e protegidas para role 'Aluno'.");
+    
+    // --- APLICA MIDDLEWARE DE AUTENTICAÇÃO GERAL PARA OUTRAS ROTAS /api/* (Personal/Admin) ---
+    // Todas as rotas definidas abaixo desta linha exigirão um token JWT válido de Personal ou Admin.
+    // O authenticateToken verifica o token, mas não impede o acesso se for um token de Aluno.
+    // A autorização específica (ex: authorizeAdmin ou lógica dentro das rotas) deve tratar disso.
+    app.use("/api/*", authenticateToken as RequestHandler);
+    console.log("🔒 Middleware de autenticação geral (Personal/Admin) aplicado às demais rotas /api/*.");
+
+    // --- ROTAS ESPECÍFICAS DE ADMIN (Personal/Admin já autenticado, authorizeAdmin verifica a role) ---
+    app.use("/api/admin", authorizeAdmin as RequestHandler, adminRoutes);
+    console.log("👑 Rotas de Admin (/api/admin) registradas e protegidas para role 'Admin'.");
+
+    // --- ROTAS PROTEGIDAS PARA PERSONAL/ADMIN ---
+    // Acessíveis por Personal ou Admin autenticado.
+    // A lógica interna da rota pode ter mais verificações se necessário.
+    app.use("/api/alunos", alunosRoutes);
+    app.use("/api/exercicios", exerciciosRouter);
+    app.use("/api/treinos", treinosRouter);
+    app.use("/api/profile", profileRoutes);
+    app.use("/api/pastas/treinos", pastasTreinosRouter);
+    app.use("/api/dashboard/geral", dashboardGeralRoutes);
+    app.use("/api/sessions", sessionsRoutes);
+    app.use("/api/activity-logs", activityLogsRoutes);
+    console.log("✅ Rotas protegidas gerais (Personal/Admin) registradas.");
+
+    app.use(errorHandler as ErrorRequestHandler);
+    console.log("✅ Middleware de tratamento de erros registrado.");
+
+    app.listen(PORT, () => {
+        console.log(`🚀 Servidor backend rodando na porta ${PORT}`);
+        console.log(`🔗 Frontend esperado em: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+    });
+}
+
+startServer().catch(error => {
+    console.error("❌ Falha ao iniciar o servidor:", error);
+    process.exit(1);
+});
+
+==== ./server/middlewares/authenticateAlunoToken.ts ====
+
+// Localização Sugerida: server/middlewares/authenticateAlunoToken.ts
+import { Request, Response, NextFunction } from 'express';
+import jwt, { Secret, JwtPayload } from 'jsonwebtoken';
+
+// Lê o segredo JWT das variáveis de ambiente
+// É o mesmo segredo usado para assinar os tokens dos alunos
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Interface para o payload decodificado do token do Aluno
+// Deve corresponder ao payload definido na rota de login/registro do aluno
+interface DecodedAlunoTokenPayload extends JwtPayload {
+  id: string;         // ID do Aluno
+  email: string;
+  nome?: string;
+  role: 'Aluno';      // Garante que a role é 'Aluno'
+  personalId?: string; // ID do Personal Trainer associado
+  // Outros campos que você possa ter incluído no token do aluno
+}
+
+// Estende a interface Request do Express para incluir req.aluno
+export interface AuthenticatedAlunoRequest extends Request {
+  aluno?: DecodedAlunoTokenPayload; // Dados do aluno logado
+}
+
+export const authenticateAlunoToken = (
+  req: AuthenticatedAlunoRequest, 
+  res: Response, 
+  next: NextFunction
+) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Acesso não autorizado. Token de aluno não fornecido.' });
+  }
+
+  if (!JWT_SECRET) {
+     console.error("Auth Aluno Middleware: JWT_SECRET não disponível em process.env.");
+     return res.status(500).json({ message: 'Erro interno do servidor (configuração de autenticação).' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET as Secret) as DecodedAlunoTokenPayload;
+
+    // Verificação crucial: garantir que o token é realmente de um 'Aluno'
+    if (decoded.role !== 'Aluno') {
+      console.warn(`[AUTH ALUNO] Tentativa de acesso com token de role inválida: ${decoded.role}`);
+      return res.status(403).json({ message: 'Acesso proibido. Token inválido para esta área.' });
+    }
+
+    req.aluno = decoded; // Adiciona os dados do aluno ao objeto req
+    console.log(`[AUTH ALUNO] Aluno autenticado: ${req.aluno?.email} (ID: ${req.aluno?.id})`);
+    next(); // Prossegue para a próxima rota/middleware
+  } catch (err: any) {
+    console.warn(`[AUTH ALUNO] Falha na verificação do token de aluno - ${err.name}: ${err.message}`);
+    if (err instanceof jwt.TokenExpiredError) {
+        return res.status(401).json({ message: 'Sessão de aluno expirada. Faça login novamente.', code: 'TOKEN_EXPIRED' });
+    }
+    if (err instanceof jwt.JsonWebTokenError) {
+        return res.status(403).json({ message: 'Acesso proibido. Token de aluno inválido.' });
+    }
+    console.error("[AUTH ALUNO] Erro inesperado ao verificar token de aluno:", err);
+    return res.status(500).json({ message: 'Erro interno ao processar o token de aluno.' });
+  }
+};
+
+==== ./server/middlewares/authenticateToken.ts ====
+
+import { Request, Response, NextFunction } from 'express';
+import jwt, { Secret, JwtPayload } from 'jsonwebtoken';
+
+// Lê diretamente de process.env
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// 1. Interface DecodedTokenPayload ATUALIZADA para refletir o que salvamos no token
+interface DecodedTokenPayload extends JwtPayload {
+  id: string;
+  email: string;
+  firstName: string; // <<< MUDADO de nome para firstName
+  lastName: string;  // <<< ADICIONADO lastName
+  role: string;      // <<< ADICIONADO role
+  // 'nome' foi removido, pois o token agora contém firstName e lastName
+}
+
+// 2. Adicionada exportação da AuthenticatedRequest para uso em outros lugares
+export interface AuthenticatedRequest extends Request {
+  user?: DecodedTokenPayload; // Usa a DecodedTokenPayload atualizada
+}
+
+// 3. A função authenticateToken agora usa AuthenticatedRequest
+export const authenticateToken = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+  if (!token) {
+    // Não precisa logar aqui, frontend já lida com isso
+    return res.status(401).json({ message: 'Acesso não autorizado. Token não fornecido.' });
+  }
+
+  if (!JWT_SECRET) {
+     console.error("Auth Middleware: JWT_SECRET não disponível em process.env. Verifique o .env na raiz e o carregamento no index.ts.");
+     return res.status(500).json({ message: 'Erro interno do servidor (configuração).' });
+  }
+
+  try {
+    // TypeScript agora entende que o 'decoded' terá as propriedades da DecodedTokenPayload
+    const decoded = jwt.verify(token, JWT_SECRET as Secret) as DecodedTokenPayload;
+    req.user = decoded; // Agora req.user terá id, email, firstName, lastName, role
+    next();
+  } catch (err: any) {
+    console.warn(`Auth Middleware: Falha na verificação do token - ${err.name}: ${err.message}`);
+    if (err instanceof jwt.TokenExpiredError) {
+        return res.status(401).json({ message: 'Sessão expirada. Faça login novamente.', code: 'TOKEN_EXPIRED' });
+    }
+    if (err instanceof jwt.JsonWebTokenError) {
+        return res.status(403).json({ message: 'Acesso proibido. Token inválido.' });
+    }
+    console.error("Auth Middleware: Erro inesperado ao verificar token:", err);
+    return res.status(500).json({ message: 'Erro interno ao processar o token.' });
+  }
+};
+==== ./server/middlewares/authorizeAdmin.ts ====
+
+// server/middlewares/authorizeAdmin.ts
+import { Response, NextFunction } from 'express';
+import { AuthenticatedRequest } from './authenticateToken'; // Certifique-se que este tipo existe e define req.user
+
+export function authorizeAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  // Verifica se o usuário está autenticado e se a role é 'Admin'
+  // O campo 'role' deve existir no objeto req.user após o login
+  if (req.user && req.user.role === 'Admin') {
+    next(); // Usuário é Admin, permite o acesso à próxima rota/middleware
+  } else {
+    // Usuário não é Admin ou não está autenticado corretamente com a role
+    res.status(403).json({ mensagem: "Acesso negado. Esta funcionalidade é restrita a administradores." });
+  }
+}
+
+==== ./server/middlewares/errorHandler.ts ====
+
+// server/middlewares/errorHandler.ts
+import { Request, Response, NextFunction } from "express";
+
+export interface AppError extends Error {
+  statusCode?: number;
+  isOperational?: boolean;
+}
+
+export function errorHandler(
+  err: AppError,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  console.error("❌ Erro capturado pelo middleware:", err.stack);
+
+  const statusCode = err.statusCode || 500;
+  const response = {
+    sucesso: false,
+    mensagem: err.message || "Erro interno no servidor.",
+    ...(process.env.NODE_ENV === "development" && { detalhes: err.stack }),
+  };
+
+  res.status(statusCode).json(response);
+}
+
+==== ./server/models/Aluno.ts ====
+
+// server/models/Aluno.ts
+import mongoose, { Schema, Document } from "mongoose"; // Document importado
+import bcrypt from 'bcrypt'; // Importar bcrypt para hashear senhas
+
+console.log("--- [server/models/Aluno.ts] Modelo Carregado (com funcionalidade de senha) ---");
+
+// Interface para tipar o documento Aluno, incluindo campos de senha
+export interface IAluno extends Document {
+  nome: string;
+  email: string;
+  passwordHash?: string; // Adicionado para armazenar a senha hasheada
+  phone?: string;
+  birthDate: string; 
+  gender: string;
+  goal: string;
+  weight: number;
+  height: number;
+  startDate: string; 
+  status: 'active' | 'inactive';
+  notes?: string;
+  trainerId: mongoose.Types.ObjectId; // Mantido como ObjectId
+  createdAt: Date;
+  updatedAt: Date;
+  // Método para comparar senhas
+  comparePassword(candidatePassword: string): Promise<boolean>;
+}
+
+const alunoSchema = new Schema<IAluno>( // Tipando o Schema com IAluno
+  {
+    nome: { type: String, required: [true, 'O nome completo é obrigatório'], trim: true },
+    email: {
+        type: String,
+        required: [true, 'O email é obrigatório'],
+        unique: true, // Garante que o email seja único
+        lowercase: true,
+        trim: true,
+        // match: [/^\S+@\S+\.\S+$/, 'Por favor, use um email válido'] // Descomente se quiser validação de formato de email mais estrita
+    },
+    passwordHash: { // Novo campo para a senha hasheada
+        type: String,
+        required: [true, 'A senha é obrigatória'], // Senha será obrigatória para alunos
+        select: false, // Não retorna o hash da senha por padrão nas queries
+    },
+    phone: { type: String, trim: true },
+    birthDate: { type: String, required: [true, 'A data de nascimento é obrigatória'] },
+    gender: { type: String, required: [true, 'O gênero é obrigatório'] },
+    goal: { type: String, required: [true, 'O objetivo é obrigatório'] },
+    weight: { type: Number, required: [true, 'O peso é obrigatório'] },
+    height: { type: Number, required: [true, 'A altura é obrigatória'] },
+    startDate: { type: String, required: [true, 'A data de início é obrigatória'] },
+    status: { type: String, required: [true, 'O status é obrigatório'], enum: ['active', 'inactive'], default: 'active' },
+    notes: { type: String },
+    trainerId: {
+      type: Schema.Types.ObjectId,
+      ref: 'PersonalTrainer',
+      required: [true, 'O ID do treinador é obrigatório']
+    },
+  },
+  {
+    timestamps: true
+  }
+);
+
+// Hook pre-save para hashear a senha ANTES de salvar, se ela foi modificada
+alunoSchema.pre<IAluno>('save', async function (next) {
+    // 'this' se refere ao documento Aluno que está sendo salvo
+    if (!this.isModified('passwordHash')) { // Só faz o hash se a senha (passwordHash) foi modificada ou é nova
+        return next();
+    }
+    try {
+        const saltRounds = 10; // Custo do salt (padrão é 10)
+        if (this.passwordHash) { // Garante que passwordHash não é undefined
+            this.passwordHash = await bcrypt.hash(this.passwordHash, saltRounds);
+        }
+        next();
+    } catch (error: any) { // Especificar 'any' ou um tipo de erro mais específico
+        next(error); // Passa o erro para o próximo middleware/error handler
+    }
+});
+
+// Método para comparar a senha candidata com o hash armazenado no documento
+alunoSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
+    if (!this.passwordHash) { // Se por algum motivo o hash não estiver presente
+        return false;
+    }
+    return bcrypt.compare(candidatePassword, this.passwordHash);
+};
+
+
+// Index para garantir unicidade do email, se não for feito automaticamente pelo 'unique: true' em alguns drivers/versões
+// alunoSchema.index({ email: 1 }, { unique: true }); // Descomente se necessário
+
+export default mongoose.model<IAluno>("Aluno", alunoSchema);
+
+==== ./server/models/Contato.ts ====
+
+// server/models/Contato.ts
+import mongoose, { Document, Schema, Types } from 'mongoose';
+
+// Interface para tipar os documentos de Contato
+export interface IContato extends Document {
+  nomeCompleto: string;
+  email: string;
+  telefone?: string;
+  dataNascimento?: Date;
+  genero?: string;
+  personalId: Types.ObjectId; // Referência ao PersonalTrainer
+  status: 'novo' | 'convertido_aluno' | 'arquivado' | 'contatado'; // Status do lead/contato
+  anotacoesPersonal?: string; // Anotações que o personal pode fazer
+  dataCadastro: Date;
+  origemToken?: string; // Token do personal que originou este contato
+  // Adicione quaisquer outros campos que você achar relevantes
+}
+
+const ContatoSchema: Schema<IContato> = new Schema({
+  nomeCompleto: {
+    type: String,
+    required: [true, 'O nome completo é obrigatório.'],
+    trim: true,
+    minlength: [3, 'O nome completo deve ter pelo menos 3 caracteres.'],
+  },
+  email: {
+    type: String,
+    required: [true, 'O e-mail é obrigatório.'],
+    trim: true,
+    lowercase: true,
+    // Validação de formato de e-mail simples (pode ser aprimorada)
+    match: [/.+\@.+\..+/, 'Por favor, insira um e-mail válido.'],
+    // Considerar adicionar um índice único composto com personalId se um email só puder se registrar uma vez por personal
+    // index: { unique: true, partialFilterExpression: { status: 'novo' } } // Exemplo, ajuste conforme necessário
+  },
+  telefone: {
+    type: String,
+    trim: true,
+    // Validação opcional de formato de telefone
+  },
+  dataNascimento: {
+    type: Date,
+  },
+  genero: {
+    type: String,
+    enum: ['masculino', 'feminino', 'outro', 'prefiro_nao_dizer'], // Exemplo de opções
+  },
+  personalId: {
+    type: Schema.Types.ObjectId,
+    ref: 'PersonalTrainer', // Certifique-se que 'PersonalTrainer' é o nome do seu modelo de personal
+    required: true,
+    index: true,
+  },
+  status: {
+    type: String,
+    enum: ['novo', 'convertido_aluno', 'arquivado', 'contatado'],
+    default: 'novo',
+    index: true,
+  },
+  anotacoesPersonal: {
+    type: String,
+    trim: true,
+  },
+  dataCadastro: {
+    type: Date,
+    default: Date.now,
+  },
+  origemToken: { // Para rastrear qual link de personal gerou este contato
+    type: String,
+  }
+  // Você pode adicionar timestamps automáticos do Mongoose se preferir
+  // }, { timestamps: true });
+});
+
+// Middleware para evitar que um mesmo email (em status 'novo') seja cadastrado para o mesmo personal.
+// Esta é uma abordagem. Outra seria um índice único composto como comentado acima.
+ContatoSchema.pre<IContato>('save', async function (next) {
+  if (this.isNew && this.status === 'novo') {
+    const existingContact = await mongoose.model('Contato').findOne({
+      email: this.email,
+      personalId: this.personalId,
+      status: 'novo' // Verifica apenas contatos que ainda não foram convertidos ou arquivados
+    });
+    if (existingContact) {
+      const err = new Error(`Este e-mail já foi registrado como um novo contato para este personal.`) as any;
+      err.status = 409; // Conflict
+      return next(err);
+    }
+  }
+  next();
+});
+
+
+export default mongoose.model<IContato>('Contato', ContatoSchema);
+
+==== ./server/models/ConvitePersonal.ts ====
+
+// server/models/ConvitePersonal.ts
+import mongoose, { Schema, Document } from 'mongoose';
+import crypto from 'crypto';
+
+export interface IConvitePersonal extends Document {
+  token: string;
+  emailConvidado?: string; // Email para o qual o convite foi especificamente enviado (opcional)
+  roleConvidado: 'Personal Trainer' | 'Admin'; // Role a ser atribuída ao se registrar
+  status: 'pendente' | 'utilizado' | 'expirado';
+  dataExpiracao?: Date;
+  criadoPor: mongoose.Types.ObjectId; // ID do Admin que criou o convite
+  usadoPor?: mongoose.Types.ObjectId; // ID do PersonalTrainer que utilizou o convite
+  dataUtilizacao?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ConvitePersonalSchema: Schema<IConvitePersonal> = new Schema(
+  {
+    token: {
+      type: String,
+      unique: true,
+      required: true,
+    },
+    emailConvidado: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      // Não é obrigatório, convite pode ser genérico
+    },
+    roleConvidado: {
+      type: String,
+      required: true,
+      enum: ['Personal Trainer', 'Admin'],
+      default: 'Personal Trainer',
+    },
+    status: {
+      type: String,
+      required: true,
+      enum: ['pendente', 'utilizado', 'expirado'],
+      default: 'pendente',
+    },
+    dataExpiracao: {
+      type: Date,
+      // Pode ser definido para expirar, por exemplo, em 7 dias
+    },
+    criadoPor: {
+      type: Schema.Types.ObjectId,
+      ref: 'PersonalTrainer', // Referencia o modelo de quem pode criar convites (Admin)
+      required: true,
+    },
+    usadoPor: {
+      type: Schema.Types.ObjectId,
+      ref: 'PersonalTrainer', // Referencia o modelo do usuário que se registrou com este convite
+    },
+    dataUtilizacao: {
+      type: Date,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Hook pre-save para gerar o token automaticamente se não fornecido
+// (embora geralmente o token seja gerado na lógica da rota e passado para o modelo)
+ConvitePersonalSchema.pre<IConvitePersonal>('validate', function (next) {
+  if (!this.token) {
+    this.token = crypto.randomBytes(20).toString('hex');
+  }
+  // Se não houver data de expiração, define para 7 dias a partir de agora, por exemplo
+  if (!this.dataExpiracao) {
+    const umaSemanaEmMs = 7 * 24 * 60 * 60 * 1000;
+    this.dataExpiracao = new Date(Date.now() + umaSemanaEmMs);
+  }
+  next();
+});
+
+const ConvitePersonal = mongoose.model<IConvitePersonal>('ConvitePersonal', ConvitePersonalSchema);
+
+export default ConvitePersonal;
+
+==== ./server/models/Exercicio.ts ====
+
+// Caminho: ./server/models/Exercicio.ts
+import mongoose, { Document, Schema, Types } from "mongoose";
+
+export interface IExercicio extends Document {
+  nome: string;
+  descricao?: string;
+  categoria?: string; // Ex: Superior, Inferior, Core
+  grupoMuscular?: string; // Ex: Peito, Costas, Pernas
+  tipo?: string; // Ex: Musculação, Calistenia, Funcional (pode ser o mesmo que categoria ou um campo adicional)
+  urlVideo?: string;
+  isCustom: boolean; // true se criado pelo personal, false se for do sistema/app
+  creatorId?: Types.ObjectId; // ID do PersonalTrainer que criou (se isCustom for true)
+  favoritedBy: Types.ObjectId[]; // Array de IDs de PersonalTrainers que favoritaram
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+const ExercicioSchema = new Schema<IExercicio>({
+  nome: { type: String, required: true, trim: true },
+  descricao: { type: String, trim: true },
+  categoria: { type: String, trim: true },
+  grupoMuscular: { type: String, trim: true, index: true }, // Principal grupo muscular trabalhado - MANTÉM ESTE
+  tipo: { type: String, trim: true },
+  urlVideo: { type: String, trim: true },
+  isCustom: { type: Boolean, required: true, default: false },
+  creatorId: {
+    type: Schema.Types.ObjectId,
+    ref: "PersonalTrainer",
+    required: function(this: IExercicio) { return this.isCustom; }
+  },
+  favoritedBy: [{
+    type: Schema.Types.ObjectId,
+    ref: "PersonalTrainer"
+  }],
+}, {
+  timestamps: true
+});
+
+// Índice para busca por nome (case-insensitive)
+ExercicioSchema.index({ nome: 'text' });
+// ExercicioSchema.index({ grupoMuscular: 1 }); // <<< REMOVER ESTA LINHA
+ExercicioSchema.index({ categoria: 1 });
+ExercicioSchema.index({ isCustom: 1, creatorId: 1 });
+
+
+export default mongoose.model<IExercicio>("Exercicio", ExercicioSchema);
+==== ./server/models/Pasta.ts ====
+
+// server/models/Pasta.ts
+import mongoose, { Schema, Document } from 'mongoose';
+
+console.log("--- [server/models/Pasta.ts] Definindo Modelo Pasta (Referência Corrigida) ---");
+
+// Interface para tipar o documento Pasta
+export interface IPasta extends Document {
+  nome: string;
+  criadorId: mongoose.Types.ObjectId; // Referência ao PersonalTrainer (_id do usuário)
+  ordem?: number; 
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const pastaSchema = new Schema<IPasta>(
+  {
+    nome: {
+      type: String,
+      required: [true, 'O nome da pasta é obrigatório.'],
+      trim: true,
+      minlength: [1, 'O nome da pasta não pode estar vazio.'],
+      maxlength: [100, 'O nome da pasta não pode exceder 100 caracteres.'],
+    },
+    criadorId: {
+      type: Schema.Types.ObjectId,
+      ref: 'PersonalTrainer', // <<< CORREÇÃO APLICADA AQUI
+      required: true,
+    },
+    ordem: { 
+      type: Number,
+      default: 0, 
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Index para otimizar buscas por criadorId e nome
+pastaSchema.index({ criadorId: 1, nome: 1 });
+pastaSchema.index({ criadorId: 1, ordem: 1 });
+
+export default mongoose.model<IPasta>('PastaTreino', pastaSchema);
+
+==== ./server/models/PersonalTrainer.ts ====
+
+// server/models/PersonalTrainer.ts
+import mongoose, { Schema, Document } from 'mongoose';
+import bcrypt from 'bcrypt';
+import crypto from 'crypto'; // Importar crypto para gerar o token
+
+// Interface atualizada para incluir todos os campos planejados
+export interface IPersonalTrainer extends Document {
+    nome: string;
+    email: string;
+    passwordHash: string; // Mantido como passwordHash conforme seu arquivo
+    role: 'Personal Trainer' | 'Admin';
+    tokenCadastroAluno?: string; // Token para o link de cadastro de alunos
+    
+    // Campos de Assinatura
+    planoId?: string; // Ex: 'mensal_5_alunos', 'anual_ilimitado'
+    statusAssinatura?: 'ativa' | 'inativa' | 'pendente_pagamento' | 'cancelada' | 'trial' | 'sem_assinatura';
+    dataInicioAssinatura?: Date;
+    dataFimAssinatura?: Date;
+    idAssinaturaGateway?: string; // ID da assinatura no provedor de pagamento
+    limiteAlunos?: number; // Limite de alunos ativos com base no plano
+
+    createdAt: Date;
+    updatedAt: Date;
+    comparePassword(password: string): Promise<boolean>;
+}
+
+const personalTrainerSchema: Schema<IPersonalTrainer> = new Schema(
+    {
+        nome: {
+            type: String,
+            required: [true, 'O nome é obrigatório.'],
+            trim: true,
+        },
+        email: {
+            type: String,
+            required: [true, 'O email é obrigatório.'],
+            unique: true,
+            lowercase: true,
+            trim: true,
+            match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Por favor, forneça um email válido.'],
+        },
+        passwordHash: { // Nome do campo da senha hasheada
+            type: String,
+            required: [true, 'A senha é obrigatória.'],
+            select: false, // Não retorna o hash da senha por padrão nas queries
+        },
+        role: {
+            type: String,
+            required: true,
+            enum: ['Personal Trainer', 'Admin'],
+            default: 'Personal Trainer'
+        },
+        tokenCadastroAluno: { // Novo campo adicionado
+            type: String,
+            unique: true,
+            sparse: true, // Permite múltiplos documentos com valor null/undefined, mas único se presente
+                        // Um índice sparse só contém entradas para documentos que têm o campo indexado.
+                        // O índice omite todos os documentos que não têm o campo indexado.
+        },
+        // Campos de Assinatura
+        planoId: { type: String },
+        statusAssinatura: {
+            type: String,
+            enum: ['ativa', 'inativa', 'pendente_pagamento', 'cancelada', 'trial', 'sem_assinatura'],
+            default: 'sem_assinatura', // Personal começa sem assinatura por padrão
+        },
+        dataInicioAssinatura: { type: Date },
+        dataFimAssinatura: { type: Date },
+        idAssinaturaGateway: { type: String },
+        limiteAlunos: { type: Number, default: 0 }, // Exemplo: 0 para sem plano, ou o limite do plano
+    },
+    {
+        timestamps: true, // Adiciona createdAt e updatedAt automaticamente
+    }
+);
+
+// Middleware para fazer o hash da senha ANTES de salvar, se ela foi modificada
+personalTrainerSchema.pre<IPersonalTrainer>('save', async function (next) {
+    // Só faz o hash da senha se ela foi modificada (ou é nova)
+    if (!this.isModified('passwordHash')) {
+        return next();
+    }
+    try {
+        const saltRounds = 10; // Custo do salt
+        this.passwordHash = await bcrypt.hash(this.passwordHash, saltRounds);
+        next();
+    } catch (error: any) {
+        next(error); // Passa o erro para o próximo middleware/error handler
+    }
+});
+
+// Middleware para gerar o tokenCadastroAluno ANTES de salvar um novo personal
+personalTrainerSchema.pre<IPersonalTrainer>('save', function (next) {
+  // Gera o token apenas se for um novo documento e o token ainda não existir
+  if (this.isNew && !this.tokenCadastroAluno) {
+    this.tokenCadastroAluno = crypto.randomBytes(20).toString('hex');
+  }
+  next();
+});
+
+
+// Método para comparar a senha candidata com o hash armazenado
+personalTrainerSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
+    // 'this.passwordHash' refere-se ao passwordHash do documento específico
+    // É importante que o campo 'passwordHash' não esteja com select: false aqui,
+    // ou que você o selecione explicitamente na query antes de chamar comparePassword.
+    // No entanto, como o método é chamado em uma instância do documento onde passwordHash pode
+    // ter sido selecionado ou já estar presente (ex: após um findOne().select('+passwordHash')),
+    // geralmente funciona. Se der problema, garanta que o hash está carregado.
+    if (!this.passwordHash) return false; // Caso o hash não esteja presente por algum motivo
+    return bcrypt.compare(candidatePassword, this.passwordHash);
+};
+
+
+const PersonalTrainer = mongoose.model<IPersonalTrainer>('PersonalTrainer', personalTrainerSchema);
+
+export default PersonalTrainer;
+
+==== ./server/models/Sessao.ts ====
+
+// server/models/Sessao.ts
+import mongoose, { Schema, Document, Types } from 'mongoose';
+
+export const TIPOS_COMPROMISSO = ['avaliacao', 'checkin', 'treino_acompanhado', 'outro'] as const;
+export type TipoCompromisso = typeof TIPOS_COMPROMISSO[number];
+
+export const OPCOES_PSE = [
+    'Muito Leve', 
+    'Leve', 
+    'Moderado', 
+    'Intenso', 
+    'Muito Intenso', 
+    'Máximo Esforço'
+] as const;
+export type OpcaoPSE = typeof OPCOES_PSE[number];
+
+interface IPopulatedAlunoLean {
+  _id: string; 
+  nome: string;
+}
+
+interface IPopulatedRotinaLean {
+  _id: string;
+  titulo: string;
+}
+
+export interface ISessaoLean {
+  _id: string; 
+  personalId: string; 
+  alunoId: IPopulatedAlunoLean | string; 
+  rotinaId: IPopulatedRotinaLean | string | null; 
+  diaDeTreinoId: string | null; 
+  diaDeTreinoIdentificador?: string | null;
+  sessionDate: string; 
+  tipoCompromisso: TipoCompromisso;
+  notes?: string; 
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'skipped';
+  concluidaEm?: string | null; 
+  pseAluno?: OpcaoPSE | null;
+  comentarioAluno?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  __v?: number;
+}
+
+export interface ISessaoDocument extends Document {
+  personalId: Types.ObjectId; 
+  alunoId: Types.ObjectId; 
+  rotinaId?: Types.ObjectId | null; 
+  diaDeTreinoId?: Types.ObjectId | null; 
+  diaDeTreinoIdentificador?: string | null;
+  sessionDate: Date; 
+  tipoCompromisso: TipoCompromisso;
+  notes?: string; 
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'skipped';
+  concluidaEm?: Date | null;
+  pseAluno?: OpcaoPSE | null;
+  comentarioAluno?: string | null;
+}
+
+const SessaoSchema = new Schema<ISessaoDocument>(
+  {
+    personalId: { type: Schema.Types.ObjectId, ref: 'PersonalTrainer', required: true, index: true },
+    alunoId: { type: Schema.Types.ObjectId, ref: 'Aluno', required: true, index: true },
+    rotinaId: { type: Schema.Types.ObjectId, ref: 'Treino', required: false, default: null, index: true },
+    diaDeTreinoId: { type: Schema.Types.ObjectId, required: false, default: null }, 
+    diaDeTreinoIdentificador: { type: String, trim: true, default: null },
+    sessionDate: { type: Date, required: true },
+    tipoCompromisso: {
+      type: String,
+      enum: { values: TIPOS_COMPROMISSO, message: 'Tipo de compromisso inválido: {VALUE}' },
+      required: true,
+      default: 'treino_acompanhado',
+    },
+    notes: { type: String, trim: true },
+    status: {
+      type: String,
+      enum: { values: ['pending', 'confirmed', 'completed', 'cancelled', 'skipped'], message: 'Status inválido: {VALUE}'},
+      default: 'pending',
+      required: true,
+    },
+    concluidaEm: { type: Date, required: false, default: null },
+    pseAluno: { 
+        type: String,
+        enum: { values: [...OPCOES_PSE, null], message: 'PSE inválido: {VALUE}' }, 
+        required: false,
+        default: null,
+    },
+    comentarioAluno: { 
+        type: String,
+        trim: true,
+        required: false,
+        default: null,
+    }
+  },
+  {
+    timestamps: true, 
+    toJSON: { virtuals: true, getters: true }, 
+    toObject: { virtuals: true, getters: true },
+  }
+);
+
+SessaoSchema.index({ personalId: 1, sessionDate: 1 });
+SessaoSchema.index({ alunoId: 1, status: 1, sessionDate: 1 });
+SessaoSchema.index({ rotinaId: 1, diaDeTreinoId: 1 });
+
+export default mongoose.model<ISessaoDocument>('Sessao', SessaoSchema);
+==== ./server/models/Treino.ts ====
+
+// server/models/Treino.ts
+import mongoose, { Schema, Document, Types } from "mongoose";
+import { IExercicio } from './Exercicio'; // Usado em ExercicioEmDiaDeTreinoSchema
+
+// Tipos de organização da Rotina/Ficha
+export const TIPOS_ORGANIZACAO_ROTINA = ['diasDaSemana', 'numerico', 'livre'] as const;
+export type TipoOrganizacaoRotina = typeof TIPOS_ORGANIZACAO_ROTINA[number];
+
+// --- Subdocumento para um Exercício dentro de um Dia de Treino ---
+export interface IExercicioEmDiaDeTreino extends Types.Subdocument {
+  exercicioId: Types.ObjectId | IExercicio; // IExercicio para quando populado
+  series?: string;
+  repeticoes?: string;
+  carga?: string;
+  descanso?: string;
+  observacoes?: string;
+  ordemNoDia: number;
+  concluido?: boolean;
+}
+
+// Interface para o objeto populado e "lean" (convertido para JS puro)
+export interface IExercicioEmDiaDeTreinoPopuladoLean {
+  _id: string; // Mongoose adiciona _id a subdocumentos por padrão
+  exercicioId: { _id: string; nome: string; grupoMuscular?: string; urlVideo?: string; descricao?: string; categoria?: string; tipo?: string; } | string; // Pode ser string (ID) ou objeto (populado)
+  series?: string;
+  repeticoes?: string;
+  carga?: string;
+  descanso?: string;
+  observacoes?: string;
+  ordemNoDia: number;
+  concluido?: boolean;
+}
+
+const ExercicioEmDiaDeTreinoSchema = new Schema<IExercicioEmDiaDeTreino>({
+  exercicioId: { type: Schema.Types.ObjectId, ref: 'Exercicio', required: true },
+  series: { type: String, trim: true },
+  repeticoes: { type: String, trim: true },
+  carga: { type: String, trim: true },
+  descanso: { type: String, trim: true },
+  observacoes: { type: String, trim: true },
+  ordemNoDia: { type: Number, default: 0, required: true },
+  concluido: { type: Boolean, default: false }
+}, { _id: true });
+
+
+// --- Subdocumento para um Dia de Treino (Sub-Ficha) dentro da Rotina/Ficha Principal ---
+export interface IDiaDeTreino extends Types.Subdocument {
+  identificadorDia: string;
+  nomeSubFicha?: string;
+  ordemNaRotina: number;
+  exerciciosDoDia: Types.DocumentArray<IExercicioEmDiaDeTreino>;
+}
+
+// Interface para o objeto populado e "lean"
+export interface IDiaDeTreinoPopuladoLean {
+  _id: string; // Mongoose adiciona _id a subdocumentos por padrão
+  identificadorDia: string;
+  nomeSubFicha?: string;
+  ordemNaRotina: number;
+  exerciciosDoDia: IExercicioEmDiaDeTreinoPopuladoLean[];
+}
+
+const DiaDeTreinoSchema = new Schema<IDiaDeTreino>({
+  identificadorDia: { type: String, required: true, trim: true },
+  nomeSubFicha: { type: String, trim: true },
+  ordemNaRotina: { type: Number, required: true, default: 0 },
+  exerciciosDoDia: [ExercicioEmDiaDeTreinoSchema]
+}, { _id: true });
+
+
+// --- Interface principal para o Documento da Ficha/Rotina de Treino ---
+export interface ITreino extends Document {
+  titulo: string;
+  descricao?: string;
+  tipo: "modelo" | "individual";
+  alunoId?: Types.ObjectId | null; // ObjectId do Aluno, populado pode ser object
+  criadorId: Types.ObjectId;      // ObjectId do PersonalTrainer, populado pode ser object
+  
+  tipoOrganizacaoRotina: TipoOrganizacaoRotina;
+  diasDeTreino: Types.DocumentArray<IDiaDeTreino>;
+
+  // Campos de gestão da Rotina/Ficha Modelo
+  pastaId?: Types.ObjectId | null; // ObjectId da PastaTreino, populado pode ser object
+  statusModelo?: "ativo" | "rascunho" | "arquivado";
+  ordemNaPasta?: number;
+
+  // Campos para controle de validade/progresso do programa para um aluno (aplicável se tipo === 'individual')
+  dataValidade?: Date | null;
+  // "Opção A - Simples" para contagem:
+  totalSessoesRotinaPlanejadas?: number | null; // Total de "dias de treino" (sessões) para completar a rotina/ciclo.
+  sessoesRotinaConcluidas: number; // Contador de "dias de treino" (sessões) concluídos desta rotina. Default 0.
+
+  // Timestamps (Mongoose adiciona automaticamente)
+  criadoEm: Date;
+  atualizadoEm: Date;
+}
+
+// Interface para a Ficha/Rotina APÓS ser populada e "lean"
+export interface ITreinoPopuladoLean {
+  _id: string;
+  titulo: string;
+  descricao?: string;
+  tipo: "modelo" | "individual";
+  // Tipagem para alunoId populado
+  alunoId?: { _id: string; nome: string; email?: string; /* outros campos de Aluno se necessário */ } | string | null;
+  // Tipagem para criadorId populado
+  criadorId: { _id: string; nome: string; email?: string; /* outros campos de PersonalTrainer se necessário */ } | string;
+  
+  tipoOrganizacaoRotina: TipoOrganizacaoRotina;
+  diasDeTreino: IDiaDeTreinoPopuladoLean[];
+
+  // Tipagem para pastaId populado
+  pastaId?: { _id: string; nome: string; /* outros campos de PastaTreino se necessário */ } | string | null;
+  statusModelo?: "ativo" | "rascunho" | "arquivado";
+  ordemNaPasta?: number;
+
+  dataValidade?: string | null; // Date é serializado para string ISO no .lean()
+  totalSessoesRotinaPlanejadas?: number | null;
+  sessoesRotinaConcluidas: number;
+
+  criadoEm: string; // Date é serializado para string ISO no .lean()
+  atualizadoEm: string; // Date é serializado para string ISO no .lean()
+  isExpirada?: boolean; // Virtual
+  progressoRotina?: string; // Virtual (ex: "3/6")
+  __v?: number;
+}
+
+
+// --- Schema Principal da Ficha/Rotina de Treino ---
+const TreinoSchema = new Schema<ITreino>(
+  {
+    titulo: { type: String, required: [true, 'O título da ficha/rotina é obrigatório'], trim: true },
+    descricao: { type: String, trim: true },
+    tipo: {
+      type: String,
+      enum: ["modelo", "individual"],
+      required: [true, 'O tipo é obrigatório'],
+    },
+    alunoId: {
+      type: Schema.Types.ObjectId,
+      ref: "Aluno", // Modelo Aluno.ts
+      default: null,
+      index: true, 
+      sparse: true, 
+    },
+    criadorId: { 
+      type: Schema.Types.ObjectId,
+      ref: "PersonalTrainer", // Modelo PersonalTrainer.ts
+      required: true,
+      index: true,
+    },
+    tipoOrganizacaoRotina: {
+        type: String,
+        enum: TIPOS_ORGANIZACAO_ROTINA,
+        required: true,
+        default: 'diasDaSemana', 
+    },
+    diasDeTreino: [DiaDeTreinoSchema],
+
+    // Campos para tipo 'modelo'
+    pastaId: { type: Schema.Types.ObjectId, ref: 'PastaTreino', default: null, sparse: true }, // Modelo Pasta.ts (exportado como PastaTreino)
+    statusModelo: {
+      type: String,
+      enum: ["ativo", "rascunho", "arquivado"],
+      default: function(this: ITreino) { return this.tipo === 'modelo' ? 'rascunho' : undefined; },
+      required: function(this: ITreino) { return this.tipo === 'modelo'; }
+    },
+    ordemNaPasta: { type: Number, default: 0 },
+
+    // Campos de validade para tipo 'individual'
+    dataValidade: { type: Date, default: null },
+    totalSessoesRotinaPlanejadas: { type: Number, default: null, min: 0 }, 
+    sessoesRotinaConcluidas: { type: Number, default: 0, min: 0 },
+  },
+  {
+    timestamps: { createdAt: 'criadoEm', updatedAt: 'atualizadoEm' },
+    toJSON: { virtuals: true, getters: true }, 
+    toObject: { virtuals: true, getters: true },
+  }
+);
+
+// Virtual para verificar se a ficha está expirada (considerando tipo individual)
+TreinoSchema.virtual('isExpirada').get(function(this: ITreino) {
+    if (this.tipo !== 'individual') return false;
+
+    // Lógica para verificar expiração por data
+    if (this.dataValidade && new Date() > this.dataValidade) {
+        return true;
+    }
+    // Lógica para verificar expiração por sessões concluídas
+    if (this.totalSessoesRotinaPlanejadas && this.totalSessoesRotinaPlanejadas > 0 && this.sessoesRotinaConcluidas >= this.totalSessoesRotinaPlanejadas) {
+        return true;
+    }
+    return false;
+});
+
+// Virtual para progresso da rotina (ex: "3/6 sessões")
+TreinoSchema.virtual('progressoRotina').get(function(this: ITreino) {
+    if (this.tipo !== 'individual') return null;
+
+    if (this.totalSessoesRotinaPlanejadas && this.totalSessoesRotinaPlanejadas > 0) {
+        return `${this.sessoesRotinaConcluidas}/${this.totalSessoesRotinaPlanejadas}`;
+    }
+    if (this.totalSessoesRotinaPlanejadas === 0) { // Se planejou 0 sessões, considera 100%
+        return `0/0`; // Ou poderia ser 100% ou N/A dependendo da sua lógica de UI
+    }
+    return null; // Se não houver totalSessoesRotinaPlanejadas definido (null ou undefined)
+});
+
+// Índices
+TreinoSchema.index({ criadorId: 1, tipo: 1 });
+// O índice para alunoId já foi definido no schema como `index: true, sparse: true`
+TreinoSchema.index({ criadorId: 1, tipo: 1, pastaId: 1 }, { sparse: true }); 
+TreinoSchema.index({ criadorId: 1, tipo: 1, statusModelo: 1 }, { partialFilterExpression: { tipo: "modelo" } });
+// Se você for consultar fichas individuais por dataValidade ou statusValidade (se adicionar de volta), crie índices para eles
+// Ex: TreinoSchema.index({ alunoId: 1, tipo: 1, dataValidade: 1 }, { partialFilterExpression: { tipo: "individual" } });
+
+
+// Exportar o modelo
+export default mongoose.model<ITreino>("Treino", TreinoSchema);
+==== ./server/routes.ts ====
+
+import type { Express, Request, Response } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { 
+  insertUserSchema, 
+  insertStudentSchema, 
+  insertExerciseSchema, 
+  insertWorkoutPlanSchema, 
+  insertWorkoutExerciseSchema, 
+  insertStudentWorkoutSchema, 
+  insertActivityLogSchema, 
+  insertSessionSchema 
+} from "@shared/schema";
+import { z } from "zod";
+
+// Helper function to validate request body with Zod schema
+function validateBody<T extends z.ZodType>(schema: T) {
+  return (req: Request, res: Response, next: () => void) => {
+    try {
+      const validatedBody = schema.parse(req.body);
+      req.body = validatedBody;
+      next();
+    } catch (error) {
+      return res.status(400).json({ error: "Invalid request body" });
+    }
+  };
+}
+
+// Initialize with default exercise data
+async function seedExercises() {
+  const exercises = [
+    { name: "Barbell Squat", description: "A compound, full body exercise that trains primarily the muscles of the thighs, hips, buttocks and quads.", muscleGroup: "Legs", category: "Strength" },
+    { name: "Bench Press", description: "A weight training exercise where the trainee presses a weight upwards while lying on a weight training bench.", muscleGroup: "Chest", category: "Strength" },
+    { name: "Deadlift", description: "A weight training exercise in which a loaded barbell or bar is lifted off the ground to the level of the hips.", muscleGroup: "Back", category: "Strength" },
+    { name: "Shoulder Press", description: "A weight training exercise in which a weight is pressed from the shoulders until the arms are fully extended overhead.", muscleGroup: "Shoulders", category: "Strength" },
+    { name: "Pull-up", description: "An upper-body compound pulling exercise where you hang from a bar and pull your body upward.", muscleGroup: "Back", category: "Bodyweight" },
+    { name: "Push-up", description: "A common calisthenics exercise beginning from the prone position, raising and lowering the body using the arms.", muscleGroup: "Chest", category: "Bodyweight" },
+    { name: "Plank", description: "An isometric core strength exercise that involves maintaining a position similar to a push-up for the maximum possible time.", muscleGroup: "Core", category: "Bodyweight" },
+    { name: "Burpee", description: "A full body exercise used in strength training and as an aerobic exercise.", muscleGroup: "Full Body", category: "Cardio" },
+    { name: "Jumping Jacks", description: "A physical jumping exercise performed by jumping to a position with legs spread wide and hands touching overhead.", muscleGroup: "Full Body", category: "Cardio" },
+    { name: "Mountain Climber", description: "A bodyweight exercise that engages multiple muscle groups and increases heart rate.", muscleGroup: "Full Body", category: "Cardio" },
+    { name: "Russian Twist", description: "A popular exercise that targets the abdominal muscles, particularly the obliques.", muscleGroup: "Core", category: "Strength" },
+    { name: "Dumbbell Curl", description: "A weight training exercise that targets the biceps brachii muscle.", muscleGroup: "Arms", category: "Strength" },
+    { name: "Tricep Dip", description: "A bodyweight exercise that targets the triceps muscles on the back of the upper arm.", muscleGroup: "Arms", category: "Bodyweight" },
+    { name: "Leg Raise", description: "An exercise that targets the iliopsoas and other muscles of the anterior hip and abdomen.", muscleGroup: "Core", category: "Bodyweight" },
+    { name: "Lunge", description: "A weight training exercise that works the quadriceps, glutes, and hamstrings.", muscleGroup: "Legs", category: "Bodyweight" }
+  ];
+
+  for (const exercise of exercises) {
+    const existingExercises = await storage.getExercises();
+    const exists = existingExercises.some(e => e.name === exercise.name);
+    if (!exists) {
+      await storage.createExercise(exercise);
+    }
+  }
+}
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Initialize seed data
+  await seedExercises();
+  
+  // Create HTTP server
+  const httpServer = createServer(app);
+
+  // Login / Authentication Routes
+  app.post("/api/login", async (req: Request, res: Response) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ message: "Username and password are required" });
+    }
+
+    const user = await storage.getUserByUsername(username);
+    if (!user || user.password !== password) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    return res.status(200).json({
+      id: user.id,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role
+    });
+  });
+
+  // Student Routes
+  app.get("/api/students", async (req: Request, res: Response) => {
+    const trainerId = parseInt(req.query.trainerId as string);
+    if (isNaN(trainerId)) {
+      return res.status(400).json({ message: "Trainer ID is required" });
+    }
+    const students = await storage.getStudents(trainerId);
+    return res.status(200).json(students);
+  });
+
+  app.get("/api/students/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const student = await storage.getStudent(id);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    return res.status(200).json(student);
+  });
+
+  app.post("/api/students", validateBody(insertStudentSchema), async (req: Request, res: Response) => {
+    const student = await storage.createStudent(req.body);
+    
+    // Create activity log
+    await storage.createActivityLog({
+      trainerId: student.trainerId,
+      activityType: "student-added",
+      details: { studentId: student.id, name: `${student.firstName} ${student.lastName}` },
+      timestamp: new Date()
+    });
+    
+    return res.status(201).json(student);
+  });
+
+  app.put("/api/students/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const updatedStudent = await storage.updateStudent(id, req.body);
+    if (!updatedStudent) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    return res.status(200).json(updatedStudent);
+  });
+
+  app.delete("/api/students/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const success = await storage.deleteStudent(id);
+    if (!success) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    return res.status(204).end();
+  });
+
+  // Exercise Routes
+  app.get("/api/exercises", async (_req: Request, res: Response) => {
+    const exercises = await storage.getExercises();
+    return res.status(200).json(exercises);
+  });
+
+  app.get("/api/exercises/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const exercise = await storage.getExercise(id);
+    if (!exercise) {
+      return res.status(404).json({ message: "Exercise not found" });
+    }
+    return res.status(200).json(exercise);
+  });
+
+  app.post("/api/exercises", validateBody(insertExerciseSchema), async (req: Request, res: Response) => {
+    const exercise = await storage.createExercise(req.body);
+    return res.status(201).json(exercise);
+  });
+
+  app.put("/api/exercises/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const updatedExercise = await storage.updateExercise(id, req.body);
+    if (!updatedExercise) {
+      return res.status(404).json({ message: "Exercise not found" });
+    }
+    return res.status(200).json(updatedExercise);
+  });
+
+  app.delete("/api/exercises/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const success = await storage.deleteExercise(id);
+    if (!success) {
+      return res.status(404).json({ message: "Exercise not found" });
+    }
+    return res.status(204).end();
+  });
+
+  // Workout Plan Routes
+  app.get("/api/workout-plans", async (req: Request, res: Response) => {
+    const trainerId = parseInt(req.query.trainerId as string);
+    if (isNaN(trainerId)) {
+      return res.status(400).json({ message: "Trainer ID is required" });
+    }
+    const workoutPlans = await storage.getWorkoutPlans(trainerId);
+    return res.status(200).json(workoutPlans);
+  });
+
+  app.get("/api/workout-plans/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const workoutPlan = await storage.getWorkoutPlan(id);
+    if (!workoutPlan) {
+      return res.status(404).json({ message: "Workout plan not found" });
+    }
+    return res.status(200).json(workoutPlan);
+  });
+
+  app.post("/api/workout-plans", validateBody(insertWorkoutPlanSchema), async (req: Request, res: Response) => {
+    const workoutPlan = await storage.createWorkoutPlan(req.body);
+    
+    // Create activity log
+    await storage.createActivityLog({
+      trainerId: workoutPlan.trainerId,
+      activityType: "workout-created",
+      details: { workoutPlanId: workoutPlan.id, name: workoutPlan.name },
+      timestamp: new Date()
+    });
+    
+    return res.status(201).json(workoutPlan);
+  });
+
+  app.put("/api/workout-plans/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const updatedWorkoutPlan = await storage.updateWorkoutPlan(id, req.body);
+    if (!updatedWorkoutPlan) {
+      return res.status(404).json({ message: "Workout plan not found" });
+    }
+    
+    // Create activity log
+    await storage.createActivityLog({
+      trainerId: updatedWorkoutPlan.trainerId,
+      activityType: "workout-updated",
+      details: { workoutPlanId: updatedWorkoutPlan.id, name: updatedWorkoutPlan.name },
+      timestamp: new Date()
+    });
+    
+    return res.status(200).json(updatedWorkoutPlan);
+  });
+
+  app.delete("/api/workout-plans/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const success = await storage.deleteWorkoutPlan(id);
+    if (!success) {
+      return res.status(404).json({ message: "Workout plan not found" });
+    }
+    return res.status(204).end();
+  });
+
+  // Workout Exercises Routes
+  app.get("/api/workout-plans/:id/exercises", async (req: Request, res: Response) => {
+    const workoutPlanId = parseInt(req.params.id);
+    const workoutExercises = await storage.getWorkoutExercises(workoutPlanId);
+    return res.status(200).json(workoutExercises);
+  });
+
+  app.post("/api/workout-exercises", validateBody(insertWorkoutExerciseSchema), async (req: Request, res: Response) => {
+    const workoutExercise = await storage.createWorkoutExercise(req.body);
+    return res.status(201).json(workoutExercise);
+  });
+
+  app.put("/api/workout-exercises/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const updatedWorkoutExercise = await storage.updateWorkoutExercise(id, req.body);
+    if (!updatedWorkoutExercise) {
+      return res.status(404).json({ message: "Workout exercise not found" });
+    }
+    return res.status(200).json(updatedWorkoutExercise);
+  });
+
+  app.delete("/api/workout-exercises/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const success = await storage.deleteWorkoutExercise(id);
+    if (!success) {
+      return res.status(404).json({ message: "Workout exercise not found" });
+    }
+    return res.status(204).end();
+  });
+
+  // Student Workout Routes
+  app.get("/api/students/:id/workouts", async (req: Request, res: Response) => {
+    const studentId = parseInt(req.params.id);
+    const studentWorkouts = await storage.getStudentWorkouts(studentId);
+    return res.status(200).json(studentWorkouts);
+  });
+
+  app.post("/api/student-workouts", validateBody(insertStudentWorkoutSchema), async (req: Request, res: Response) => {
+    const studentWorkout = await storage.createStudentWorkout(req.body);
+    
+    // Get student and workout plan info for activity log
+    const student = await storage.getStudent(studentWorkout.studentId);
+    const workoutPlan = await storage.getWorkoutPlan(studentWorkout.workoutPlanId);
+    
+    if (student && workoutPlan) {
+      // Create activity log
+      await storage.createActivityLog({
+        trainerId: workoutPlan.trainerId,
+        activityType: "workout-assigned",
+        details: { 
+          studentId: student.id, 
+          studentName: `${student.firstName} ${student.lastName}`,
+          workoutPlanId: workoutPlan.id,
+          workoutPlanName: workoutPlan.name
+        },
+        timestamp: new Date()
+      });
+    }
+    
+    return res.status(201).json(studentWorkout);
+  });
+
+  app.put("/api/student-workouts/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const updatedStudentWorkout = await storage.updateStudentWorkout(id, req.body);
+    if (!updatedStudentWorkout) {
+      return res.status(404).json({ message: "Student workout not found" });
+    }
+    
+    // Create activity log if progress was updated
+    if (req.body.progress !== undefined) {
+      const student = await storage.getStudent(updatedStudentWorkout.studentId);
+      const workoutPlan = await storage.getWorkoutPlan(updatedStudentWorkout.workoutPlanId);
+      
+      if (student && workoutPlan) {
+        await storage.createActivityLog({
+          trainerId: workoutPlan.trainerId,
+          activityType: "workout-progress-updated",
+          details: { 
+            studentId: student.id, 
+            studentName: `${student.firstName} ${student.lastName}`,
+            workoutPlanId: workoutPlan.id,
+            workoutPlanName: workoutPlan.name,
+            progress: updatedStudentWorkout.progress
+          },
+          timestamp: new Date()
+        });
+      }
+    }
+    
+    return res.status(200).json(updatedStudentWorkout);
+  });
+
+  app.delete("/api/student-workouts/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const success = await storage.deleteStudentWorkout(id);
+    if (!success) {
+      return res.status(404).json({ message: "Student workout not found" });
+    }
+    return res.status(204).end();
+  });
+
+  // Activity Log Routes
+  app.get("/api/activity-logs", async (req: Request, res: Response) => {
+    const trainerId = parseInt(req.query.trainerId as string);
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+    
+    if (isNaN(trainerId)) {
+      return res.status(400).json({ message: "Trainer ID is required" });
+    }
+    
+    const activityLogs = await storage.getActivityLogs(trainerId, limit);
+    return res.status(200).json(activityLogs);
+  });
+
+  // Session Routes
+  app.get("/api/sessions", async (req: Request, res: Response) => {
+    const trainerId = parseInt(req.query.trainerId as string);
+    const date = req.query.date ? new Date(req.query.date as string) : undefined;
+    
+    if (isNaN(trainerId)) {
+      return res.status(400).json({ message: "Trainer ID is required" });
+    }
+    
+    let sessions;
+    if (date) {
+      sessions = await storage.getSessionsByDate(trainerId, date);
+    } else {
+      sessions = await storage.getSessions(trainerId);
+    }
+    
+    // Fetch student data for each session
+    const sessionsWithStudents = await Promise.all(
+      sessions.map(async (session) => {
+        const student = await storage.getStudent(session.studentId);
+        return {
+          ...session,
+          student
+        };
+      })
+    );
+    
+    return res.status(200).json(sessionsWithStudents);
+  });
+
+  app.post("/api/sessions", validateBody(insertSessionSchema), async (req: Request, res: Response) => {
+    const session = await storage.createSession(req.body);
+    
+    // Create activity log
+    const student = await storage.getStudent(session.studentId);
+    if (student) {
+      await storage.createActivityLog({
+        trainerId: session.trainerId,
+        activityType: "session-scheduled",
+        details: { 
+          sessionId: session.id, 
+          studentId: student.id,
+          studentName: `${student.firstName} ${student.lastName}`,
+          sessionDate: session.sessionDate
+        },
+        timestamp: new Date()
+      });
+    }
+    
+    return res.status(201).json(session);
+  });
+
+  app.put("/api/sessions/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const updatedSession = await storage.updateSession(id, req.body);
+    if (!updatedSession) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+    
+    // Create activity log for status changes
+    if (req.body.status) {
+      const student = await storage.getStudent(updatedSession.studentId);
+      if (student) {
+        await storage.createActivityLog({
+          trainerId: updatedSession.trainerId,
+          activityType: `session-${req.body.status}`,
+          details: { 
+            sessionId: updatedSession.id, 
+            studentId: student.id,
+            studentName: `${student.firstName} ${student.lastName}`,
+            sessionDate: updatedSession.sessionDate,
+            status: updatedSession.status
+          },
+          timestamp: new Date()
+        });
+      }
+    }
+    
+    return res.status(200).json(updatedSession);
+  });
+
+  app.delete("/api/sessions/:id", async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const success = await storage.deleteSession(id);
+    if (!success) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+    return res.status(204).end();
+  });
+
+  // Dashboard Stats
+  app.get("/api/dashboard", async (req: Request, res: Response) => {
+    const trainerId = parseInt(req.query.trainerId as string);
+    
+    if (isNaN(trainerId)) {
+      return res.status(400).json({ message: "Trainer ID is required" });
+    }
+    
+    // Get students count
+    const students = await storage.getStudents(trainerId);
+    const studentsCount = students.length;
+    
+    // Get active workout plans count
+    const workoutPlans = await storage.getWorkoutPlans(trainerId);
+    const activeWorkoutsCount = workoutPlans.filter(plan => plan.status === "active").length;
+    
+    // Get sessions for current week
+    const today = new Date();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    const endOfWeek = new Date(today);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+    
+    const sessions = await storage.getSessions(trainerId);
+    const sessionsThisWeek = sessions.filter(session => {
+      const sessionDate = new Date(session.sessionDate);
+      return sessionDate >= startOfWeek && sessionDate <= endOfWeek;
+    }).length;
+    
+    // Calculate completion rate (percentage of completed sessions)
+    const completedSessions = sessions.filter(session => session.status === "completed").length;
+    const allSessions = sessions.length;
+    const completionRate = allSessions > 0 ? Math.round((completedSessions / allSessions) * 100) : 0;
+    
+    return res.status(200).json({
+      studentsCount,
+      activeWorkoutsCount,
+      sessionsThisWeek,
+      completionRate
+    });
+  });
+
+  return httpServer;
+}
+
+==== ./server/scripts/createPersonal.ts ====
+
+// server/scripts/createPersonal.ts
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+import PersonalTrainer, { IPersonalTrainer } from '../models/PersonalTrainer'; // Ajuste o caminho se necessário
+import { connectToDatabase, disconnectFromDatabase } from '../database'; // Ajuste o caminho se necessário
+
+dotenv.config({ path: '../../.env' }); // Carrega variáveis de ambiente do .env na raiz do projeto
+
+async function createPersonal() {
+  // Pega os argumentos da linha de comando: nome, email, senha
+  // Exemplo de como rodar: ts-node server/scripts/createPersonal.ts "Nome do Personal" "email@example.com" "senha123"
+  const args = process.argv.slice(2); // Os dois primeiros args são 'node' e o nome do script
+
+  if (args.length < 3) {
+    console.error('Uso: ts-node server/scripts/createPersonal.ts "<Nome Completo>" "<email>" "<senha>" [role]');
+    console.error('Exemplo: ts-node server/scripts/createPersonal.ts "João Silva" "joao@example.com" "senhaSegura"');
+    process.exit(1);
+  }
+
+  const [nome, email, passwordInput] = args;
+  const roleInput = args[3] || 'Personal Trainer'; // Pega o quarto argumento como role, ou usa o default
+
+  if (!['Personal Trainer', 'Admin'].includes(roleInput)) {
+    console.error(`Role inválido: "${roleInput}". Use "Personal Trainer" ou "Admin".`);
+    process.exit(1);
+  }
+
+  try {
+    await connectToDatabase();
+    console.log('Conectado ao banco de dados...');
+
+    const existingPersonal = await PersonalTrainer.findOne({ email: email.toLowerCase() });
+    if (existingPersonal) {
+      console.warn(`Já existe um personal trainer com o email: ${email}`);
+      await disconnectFromDatabase();
+      process.exit(1);
+    }
+
+    console.log(`Criando personal: ${nome}, Email: ${email}, Role: ${roleInput}`);
+
+    // Criamos a instância com a senha em texto plano.
+    // O middleware pre('save') no modelo PersonalTrainer cuidará do hashing.
+    const newPersonal = new PersonalTrainer({
+      nome,
+      email: email.toLowerCase(),
+      passwordHash: passwordInput, // O middleware pre-save irá hashear este campo
+      role: roleInput as IPersonalTrainer['role'],
+      // tokenCadastroAluno será gerado automaticamente pelo middleware pre-save
+      // statusAssinatura e limiteAlunos usarão os defaults do schema
+    });
+
+    await newPersonal.save();
+
+    // O token é gerado no pre-save, então podemos logá-lo aqui se quisermos
+    console.log('Personal Trainer criado com sucesso!');
+    console.log('Detalhes:');
+    console.log(`  ID: ${newPersonal._id}`);
+    console.log(`  Nome: ${newPersonal.nome}`);
+    console.log(`  Email: ${newPersonal.email}`);
+    console.log(`  Role: ${newPersonal.role}`);
+    console.log(`  Token de Cadastro de Aluno: ${newPersonal.tokenCadastroAluno}`);
+    console.log(`  Status da Assinatura: ${newPersonal.statusAssinatura}`);
+
+  } catch (error) {
+    console.error('Erro ao criar Personal Trainer:', error);
+  } finally {
+    await disconnectFromDatabase();
+    console.log('Desconectado do banco de dados.');
+    process.exit(0);
+  }
+}
+
+createPersonal();

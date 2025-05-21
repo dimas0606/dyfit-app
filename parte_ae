@@ -1,0 +1,16 @@
+./client/src/components/ui/menubar.tsx
+./client/src/components/ui/modal-confirmacao.tsx
+./client/src/components/ui/navigation-menu.tsx
+./client/src/components/ui/pagination.tsx
+./client/src/components/ui/popover.tsx
+./client/src/components/ui/progress.tsx
+./client/src/components/ui/radio-group.tsx
+./client/src/components/ui/resizable.tsx
+./client/src/components/ui/scroll-area.tsx
+./client/src/components/ui/select.tsx
+./client/src/components/ui/separator.tsx
+./client/src/components/ui/sheet.tsx
+./client/src/components/ui/sidebar.tsx
+./client/src/components/ui/skeleton.tsx
+./client/src/components/ui/slider.tsx
+./client/src/components/ui/switch.tsx
