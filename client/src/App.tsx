@@ -35,7 +35,7 @@ const AlunoLoginPage = lazy(() => import("@/pages/public/AlunoLoginPage"));
 // Páginas do Aluno
 const AlunoDashboardPage = lazy(() => import('@/pages/alunos/AlunoDashboardPage'));
 const AlunoFichaDetalhePage = lazy(() => import('@/pages/alunos/AlunoFichaDetalhePage'));
-const AlunoHistoricoPage = lazy(() => import('@/pages/alunos/AlunoHistoricoPage')); // <<< ADICIONADO IMPORT LAZY
+const AlunoHistoricoPage = lazy(() => import('@/pages/alunos/AlunoHistoricoPage'));
 
 interface CustomRouteProps extends Omit<RouteProps, 'component' | 'children'> {
   component?: React.ComponentType<any>;
@@ -44,31 +44,49 @@ interface CustomRouteProps extends Omit<RouteProps, 'component' | 'children'> {
 
 const ProtectedRoute: React.FC<CustomRouteProps> = ({ component: Component, children, ...rest }) => {
   const { user, isLoading: isUserContextLoading } = useContext(UserContext);
+  const [location] = useLocation(); // Adicionado para depuração
+
   if (isUserContextLoading) {
     return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   }
-  if (!user) return <Redirect to="/login" />;
+  if (!user) {
+    console.log(`[ProtectedRoute] User not found (isLoading: ${isUserContextLoading}). Redirecting to /login from ${location}`);
+    return <Redirect to="/login" />;
+  }
   if (Component) return <Route {...rest} component={Component} />;
   return <Route {...rest}>{children}</Route>;
 };
 
 const AdminRoute: React.FC<CustomRouteProps> = ({ component: Component, children, ...rest }) => {
   const { user, isLoading: isUserContextLoading } = useContext(UserContext);
+  const [location] = useLocation(); // Adicionado para depuração
+
   if (isUserContextLoading) {
     return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   }
-  if (!user) return <Redirect to="/login" />;
-  if (user.role !== 'Admin') return <Redirect to="/" />;
+  if (!user) {
+    console.log(`[AdminRoute] User not found (isLoading: ${isUserContextLoading}). Redirecting to /login from ${location}`);
+    return <Redirect to="/login" />;
+  }
+  if (user.role !== 'Admin') {
+    console.log(`[AdminRoute] User role is not Admin (${user.role}). Redirecting to / from ${location}`);
+    return <Redirect to="/" />;
+  }
   if (Component) return <Route {...rest} component={Component} />;
   return <Route {...rest}>{children}</Route>;
 };
 
 const AlunoProtectedRoute: React.FC<CustomRouteProps> = ({ component: Component, children, ...rest }) => {
   const { aluno, isLoadingAluno } = useAluno();
+  const [location] = useLocation(); // Adicionado para depuração
+
   if (isLoadingAluno) {
     return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /> Carregando dados do aluno...</div>;
   }
-  if (!aluno) return <Redirect to="/aluno/login" />;
+  if (!aluno) {
+    console.log(`[AlunoProtectedRoute] Aluno not found (isLoadingAluno: ${isLoadingAluno}). Redirecting to /aluno/login from ${location}`);
+    return <Redirect to="/aluno/login" />;
+  }
   if (Component) return <Route {...rest} component={Component} />;
   return <Route {...rest}>{children}</Route>;
 };
@@ -80,18 +98,32 @@ function AppContent() {
   const [location] = useLocation();
 
   const isAuthLoading = isUserContextLoading || isLoadingAluno;
-  const noUserOrAluno = !user && !aluno;
-  const isPublicAuthRoute = location === "/login" ||
-                            location === "/aluno/login" ||
-                            location.startsWith("/cadastrar-personal/convite/") ||
-                            location.startsWith("/convite-aluno/");
+  const isLoginOrAlunoLoginPage = location === "/login" || location === "/aluno/login";
+  const isPublicConviteRoute = location.startsWith("/cadastrar-personal/convite/") || location.startsWith("/convite-aluno/");
+  const isPublicAuthRoute = isLoginOrAlunoLoginPage || isPublicConviteRoute;
 
-  if (isAuthLoading && noUserOrAluno && !isPublicAuthRoute) {
+
+  if (isAuthLoading && !user && !aluno && !isPublicAuthRoute) {
+    // console.log("[AppContent] Auth loading, no user/aluno, not public auth route. Showing loader.");
     return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /> Verificando sessão...</div>;
   }
+  
+  // console.log("[AppContent] State:", { user, aluno, location, isUserContextLoading, isLoadingAluno });
+
 
   if (user) { // Se um Personal/Admin está logado
-    if (isPublicAuthRoute && location !== "/login") return <Redirect to="/" />;
+    // Se o usuário está logado E está na página de login, redireciona para o dashboard.
+    // Isso evita que um usuário logado veja a página de login novamente.
+    if (location === "/login") {
+      // console.log("[AppContent] User logged in and on /login. Redirecting to /.");
+      return <Redirect to="/" />;
+    }
+    // Se o usuário está logado e tenta acessar uma rota pública de convite ou login de aluno, redireciona para o dashboard.
+    if (location === "/aluno/login" || isPublicConviteRoute) {
+        // console.log("[AppContent] User logged in and on a public auth route other than /login. Redirecting to /.");
+        return <Redirect to="/" />;
+    }
+
     return (
       <MainLayout>
         <Suspense fallback={<div className="flex h-full flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
@@ -116,21 +148,31 @@ function AppContent() {
       </MainLayout>
     );
   } else if (aluno) { // Se um Aluno está logado
-     if (isPublicAuthRoute && location !== "/aluno/login") return <Redirect to="/aluno/dashboard" />;
+     if (location === "/aluno/login") {
+        // console.log("[AppContent] Aluno logged in and on /aluno/login. Redirecting to /aluno/dashboard.");
+        return <Redirect to="/aluno/dashboard" />;
+     }
+     // Se o aluno está logado e tenta acessar uma rota pública de convite ou login de personal, redireciona para o dashboard do aluno.
+     if (location === "/login" || isPublicConviteRoute) {
+        // console.log("[AppContent] Aluno logged in and on a public auth route. Redirecting to /aluno/dashboard.");
+        return <Redirect to="/aluno/dashboard" />;
+    }
+
     return (
       <MainLayout>
         <Suspense fallback={<div className="flex h-full flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
           <Switch>
             <AlunoProtectedRoute path="/aluno/dashboard" component={AlunoDashboardPage} />
             <AlunoProtectedRoute path="/aluno/ficha/:fichaId" component={AlunoFichaDetalhePage} />
-            <AlunoProtectedRoute path="/aluno/historico" component={AlunoHistoricoPage} /> {/* <<< ADICIONADA ROTA PROTEGIDA */}
-            <Route> <Redirect to="/aluno/dashboard" /> </Route> {/* Fallback para rotas não encontradas na área do aluno */}
+            <AlunoProtectedRoute path="/aluno/historico" component={AlunoHistoricoPage} />
+            <Route> <Redirect to="/aluno/dashboard" /> </Route>
           </Switch>
         </Suspense>
       </MainLayout>
     );
   } else {
     // Ninguém logado - Rotas Públicas
+    // console.log("[AppContent] No user or aluno. Rendering public routes.");
     return (
       <Suspense fallback={<div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>}>
         <Switch>
@@ -139,6 +181,7 @@ function AppContent() {
           <Route path="/convite-aluno/:tokenPersonal" component={CadastroAlunoPorConvitePersonalPage} />
           <Route path="/aluno/login" component={AlunoLoginPage} />
           <Route>
+            {/* Se não for nenhuma das rotas públicas de autenticação explícitas, e ninguém estiver logado, redireciona para /login */}
             {!isPublicAuthRoute ? <Redirect to="/login" /> : <LoginPage />}
           </Route>
         </Switch>
