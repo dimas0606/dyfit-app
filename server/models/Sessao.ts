@@ -1,7 +1,8 @@
 // server/models/Sessao.ts
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export const TIPOS_COMPROMISSO = ['avaliacao', 'checkin', 'treino_acompanhado', 'outro'] as const;
+// <<< AJUSTE AQUI: Adicionado 'treino_rotina' >>>
+export const TIPOS_COMPROMISSO = ['avaliacao', 'checkin', 'treino_acompanhado', 'outro', 'treino_rotina'] as const;
 export type TipoCompromisso = typeof TIPOS_COMPROMISSO[number];
 
 export const OPCOES_PSE = [
@@ -47,8 +48,8 @@ export interface ISessaoDocument extends Document {
   personalId: Types.ObjectId; 
   alunoId: Types.ObjectId; 
   rotinaId?: Types.ObjectId | null; 
-  diaDeTreinoId?: Types.ObjectId | null; 
-  diaDeTreinoIdentificador?: string | null;
+  diaDeTreinoId?: Types.ObjectId | null; // ID do subdocumento DiaDeTreino dentro da Rotina
+  diaDeTreinoIdentificador?: string | null; // O nome/identificador do dia (ex: "Segunda", "Treino A")
   sessionDate: Date; 
   tipoCompromisso: TipoCompromisso;
   notes?: string; 
@@ -70,13 +71,13 @@ const SessaoSchema = new Schema<ISessaoDocument>(
       type: String,
       enum: { values: TIPOS_COMPROMISSO, message: 'Tipo de compromisso inválido: {VALUE}' },
       required: true,
-      default: 'treino_acompanhado',
+      // Removido o default: 'treino_acompanhado' para que seja explicitamente definido pela rota
     },
     notes: { type: String, trim: true },
     status: {
       type: String,
       enum: { values: ['pending', 'confirmed', 'completed', 'cancelled', 'skipped'], message: 'Status inválido: {VALUE}'},
-      default: 'pending',
+      default: 'pending', // Manter pending como default para sessões agendadas, 'completed' será setado na rota de concluir
       required: true,
     },
     concluidaEm: { type: Date, required: false, default: null },
@@ -102,6 +103,6 @@ const SessaoSchema = new Schema<ISessaoDocument>(
 
 SessaoSchema.index({ personalId: 1, sessionDate: 1 });
 SessaoSchema.index({ alunoId: 1, status: 1, sessionDate: 1 });
-SessaoSchema.index({ rotinaId: 1, diaDeTreinoId: 1 });
+SessaoSchema.index({ rotinaId: 1, diaDeTreinoId: 1 }); // Adicionado para otimizar buscas por rotina/dia
 
 export default mongoose.model<ISessaoDocument>('Sessao', SessaoSchema);
