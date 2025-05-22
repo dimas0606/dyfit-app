@@ -1,20 +1,19 @@
 // client/src/pages/alunos/AlunoDashboardPage.tsx
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useAluno } from '@/context/AlunoContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { Loader2, ListChecks, Eye, AlertTriangle, CalendarClock, PlayCircle, ChevronRight, Zap } from 'lucide-react';
+import { Loader2, ListChecks, Eye, AlertTriangle, CalendarClock, PlayCircle, Zap, CheckCircle2, RotateCcw } from 'lucide-react';
 import { Link as WouterLink, useLocation } from 'wouter';
-import { format, parseISO, isValid as isDateValidFn } from 'date-fns';
+import { format, parseISO, isValid as isDateValidFn, isSameWeek, startOfWeek as dateFnsStartOfWeek, endOfWeek as dateFnsEndOfWeek } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 import FrequenciaSemanal from '@/components/alunos/FrequenciaSemanal';
 
-// --- Interfaces ATUALIZADAS para refletir a estrutura da ROTINA ---
+// --- Interfaces ---
 interface ExercicioDetalhePopulado {
   _id: string;
   nome: string;
@@ -24,7 +23,6 @@ interface ExercicioDetalhePopulado {
   categoria?: string;
   tipo?: string;
 }
-
 interface ExercicioEmDiaDeTreinoPopulado {
   _id: string;
   exercicioId: ExercicioDetalhePopulado | string; 
@@ -36,7 +34,6 @@ interface ExercicioEmDiaDeTreinoPopulado {
   ordemNoDia: number;
   concluido?: boolean;
 }
-
 interface DiaDeTreinoPopulado {
   _id: string;
   identificadorDia: string;
@@ -44,7 +41,6 @@ interface DiaDeTreinoPopulado {
   ordemNaRotina: number;
   exerciciosDoDia: ExercicioEmDiaDeTreinoPopulado[];
 }
-
 interface RotinaDeTreinoAluno {
   _id: string;
   titulo: string;
@@ -62,14 +58,16 @@ interface RotinaDeTreinoAluno {
   sessoesRotinaConcluidas: number;
   criadoEm: string; 
   atualizadoEm?: string; 
-  isExpirada?: boolean; 
-  progressoPercentual?: number; 
 }
-
 interface SessaoConcluidaParaFrequencia {
   _id: string;
   sessionDate: string | Date;
-  tipoCompromisso?: string;
+  tipoCompromisso?: string; 
+}
+interface SessaoConcluidaRotina {
+    _id: string;
+    diaDeTreinoId: string | null;
+    concluidaEm: string; 
 }
 
 const AlunoDashboardPage: React.FC = () => {
@@ -82,7 +80,7 @@ const AlunoDashboardPage: React.FC = () => {
     error: errorRotinas, 
   } = useQuery<RotinaDeTreinoAluno[], Error>({ 
     queryKey: ['minhasRotinasAluno', aluno?.id], 
-    queryFn: async () => {
+    queryFn: async () => { 
       if (!aluno?.id) throw new Error("Aluno não autenticado para buscar rotinas.");
       const rotinasDoAluno = await apiRequest<RotinaDeTreinoAluno[]>('GET', '/api/aluno/meus-treinos');
       return rotinasDoAluno.sort((a, b) => 
@@ -94,11 +92,11 @@ const AlunoDashboardPage: React.FC = () => {
   });
 
   const {
-    data: sessoesConcluidasNaSemana,
+    data: sessoesConcluidasNaSemanaGeral,
     isLoading: isLoadingFrequencia,
   } = useQuery<SessaoConcluidaParaFrequencia[], Error>({
     queryKey: ['frequenciaSemanalAluno', aluno?.id],
-    queryFn: async () => {
+    queryFn: async () => { 
       if (!aluno?.id) throw new Error("Aluno não autenticado para buscar frequência.");
       return apiRequest<SessaoConcluidaParaFrequencia[]>('GET', '/api/aluno/minhas-sessoes-concluidas-na-semana');
     },
@@ -106,9 +104,23 @@ const AlunoDashboardPage: React.FC = () => {
     staleTime: 1000 * 60 * 1,
   });
 
-  const rotinaAtiva = minhasRotinas && minhasRotinas.length > 0 ? minhasRotinas[0] : null;
+  const rotinaAtiva = useMemo(() => {
+      if (!minhasRotinas || minhasRotinas.length === 0) return null;
+      return minhasRotinas[0];
+  }, [minhasRotinas]);
 
-  const formatarDataSimples = (dataISO?: string | null): string => {
+
+  const { data: sessoesConcluidasDaRotinaAtiva, isLoading: isLoadingSessoesRotina } = useQuery<SessaoConcluidaRotina[], Error>({
+    queryKey: ['sessoesConcluidasRotinaAtiva', aluno?.id, rotinaAtiva?._id],
+    queryFn: async () => {
+        if (!aluno?.id || !rotinaAtiva?._id) throw new Error("Aluno ou rotina ativa não definidos para buscar sessões.");
+        return apiRequest<SessaoConcluidaRotina[]>('GET', `/api/aluno/rotinas/${rotinaAtiva._id}/sessoes-concluidas`);
+    },
+    enabled: !!aluno && !!tokenAluno && !!rotinaAtiva,
+    staleTime: 1000 * 30, 
+  });
+
+  const formatarDataSimples = (dataISO?: string | null): string => { 
     if (!dataISO) return 'N/A';
     try { 
       const dateObj = parseISO(dataISO);
@@ -117,8 +129,58 @@ const AlunoDashboardPage: React.FC = () => {
     }
     catch (e) { return 'Data inválida'; }
   };
-  
-  if (isLoadingRotinas || isLoadingFrequencia ) {
+
+  const { proximoDiaSugerido, diasConcluidosNestaSemanaIdsSet } = useMemo(() => {
+    if (!rotinaAtiva || !rotinaAtiva.diasDeTreino || rotinaAtiva.diasDeTreino.length === 0) {
+        return { proximoDiaSugerido: null, diasConcluidosNestaSemanaIdsSet: new Set<string>() };
+    }
+
+    const diasDaRotinaOrdenados = [...rotinaAtiva.diasDeTreino].sort((a, b) => a.ordemNaRotina - b.ordemNaRotina);
+    
+    const hoje = new Date();
+    const diasConcluidosSemana = new Set<string>();
+    if (sessoesConcluidasDaRotinaAtiva) {
+        sessoesConcluidasDaRotinaAtiva.forEach(sessao => {
+            if (sessao.diaDeTreinoId && sessao.concluidaEm) {
+                const dataConclusao = parseISO(sessao.concluidaEm);
+                if (isDateValidFn(dataConclusao) && isSameWeek(dataConclusao, hoje, { weekStartsOn: 1 })) {
+                     diasConcluidosSemana.add(sessao.diaDeTreinoId);
+                }
+            }
+        });
+    }
+
+    if (rotinaAtiva.totalSessoesRotinaPlanejadas && rotinaAtiva.sessoesRotinaConcluidas >= rotinaAtiva.totalSessoesRotinaPlanejadas) {
+        return { proximoDiaSugerido: null, diasConcluidosNestaSemanaIdsSet: diasConcluidosSemana }; 
+    }
+
+    let ultimoDiaConcluidoId: string | null = null;
+    if (sessoesConcluidasDaRotinaAtiva && sessoesConcluidasDaRotinaAtiva.length > 0) {
+        const sessoesOrdenadas = [...sessoesConcluidasDaRotinaAtiva].sort((a,b) => new Date(b.concluidaEm).getTime() - new Date(a.concluidaEm).getTime());
+        ultimoDiaConcluidoId = sessoesOrdenadas[0].diaDeTreinoId;
+    }
+
+    let proximoDia: DiaDeTreinoPopulado | null = null;
+    if (!ultimoDiaConcluidoId) {
+        proximoDia = diasDaRotinaOrdenados[0] || null;
+    } else {
+        const indiceUltimoDiaConcluidoNaRotina = diasDaRotinaOrdenados.findIndex(dia => dia._id === ultimoDiaConcluidoId);
+        if (indiceUltimoDiaConcluidoNaRotina !== -1) {
+            if (indiceUltimoDiaConcluidoNaRotina + 1 < diasDaRotinaOrdenados.length) {
+                proximoDia = diasDaRotinaOrdenados[indiceUltimoDiaConcluidoNaRotina + 1];
+            } else {
+                proximoDia = diasDaRotinaOrdenados[0] || null;
+            }
+        } else {
+            proximoDia = diasDaRotinaOrdenados[0] || null;
+        }
+    }
+    return { proximoDiaSugerido: proximoDia, diasConcluidosNestaSemanaIdsSet: diasConcluidosSemana };
+
+  }, [rotinaAtiva, sessoesConcluidasDaRotinaAtiva]);
+
+
+  if (isLoadingRotinas || isLoadingFrequencia || (!!rotinaAtiva && isLoadingSessoesRotina)) { 
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
@@ -127,7 +189,7 @@ const AlunoDashboardPage: React.FC = () => {
     );
   }
   
-  if (!aluno && !tokenAluno && !isLoadingRotinas && !isLoadingFrequencia) {
+  if (!aluno && !tokenAluno && !isLoadingRotinas && !isLoadingFrequencia && !(!!rotinaAtiva && isLoadingSessoesRotina)) { 
       return (
           <div className="flex h-screen w-full items-center justify-center">
               <p>Sessão inválida ou expirada. Por favor, <WouterLink href="/aluno/login" className="text-primary hover:underline">faça login</WouterLink> novamente.</p>
@@ -135,7 +197,7 @@ const AlunoDashboardPage: React.FC = () => {
       );
   }
   
-  if (errorRotinas) {
+  if (errorRotinas) { 
       return (
         <div className="container mx-auto p-4 md:p-6 lg:p-8">
           <div className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-4 rounded-md flex items-center">
@@ -145,7 +207,6 @@ const AlunoDashboardPage: React.FC = () => {
         </div>
       );
   }
-
 
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 space-y-8">
@@ -158,87 +219,123 @@ const AlunoDashboardPage: React.FC = () => {
       </div>
 
       <FrequenciaSemanal 
-        sessoesConcluidasNaSemana={sessoesConcluidasNaSemana || []}
+        sessoesConcluidasNaSemana={sessoesConcluidasNaSemanaGeral || []}
         isLoading={isLoadingFrequencia}
       />
 
       {rotinaAtiva ? (
-        <Card className="shadow-md">
-          <CardHeader>
-            <CardTitle className="flex items-center text-xl">
-              <Zap className="w-5 h-5 mr-2 text-primary" />
+        <Card className="shadow-lg border border-primary/30">
+          <CardHeader className="bg-primary/5 dark:bg-primary/10">
+            <CardTitle className="flex items-center text-xl text-primary dark:text-sky-400">
+              <Zap className="w-6 h-6 mr-2" />
               Minha Rotina Ativa: {rotinaAtiva.titulo}
             </CardTitle>
-            {rotinaAtiva.descricao && <CardDescription>{rotinaAtiva.descricao}</CardDescription>}
+            {rotinaAtiva.descricao && <CardDescription className="text-sm">{rotinaAtiva.descricao}</CardDescription>}
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="pt-4 space-y-6">
             <div className="text-sm text-muted-foreground space-y-1">
               {rotinaAtiva.dataValidade && (
                 <p>Válida até: {formatarDataSimples(rotinaAtiva.dataValidade)}</p>
               )}
               {rotinaAtiva.totalSessoesRotinaPlanejadas !== undefined && rotinaAtiva.totalSessoesRotinaPlanejadas !== null && (
                 <>
-                  <p>
-                    Progresso: {rotinaAtiva.sessoesRotinaConcluidas} de {rotinaAtiva.totalSessoesRotinaPlanejadas} sessões concluídas.
+                  <p className="font-medium">
+                    Progresso Total da Rotina: <strong>{rotinaAtiva.sessoesRotinaConcluidas}</strong> de <strong>{rotinaAtiva.totalSessoesRotinaPlanejadas}</strong> {rotinaAtiva.totalSessoesRotinaPlanejadas === 1 ? 'sessão' : 'sessões'}.
                   </p>
                   <Progress 
                     value={(rotinaAtiva.totalSessoesRotinaPlanejadas > 0 ? (rotinaAtiva.sessoesRotinaConcluidas / rotinaAtiva.totalSessoesRotinaPlanejadas) * 100 : 0)} 
-                    className="h-2" 
+                    className="h-3" 
                   />
                 </>
               )}
             </div>
 
-            {rotinaAtiva.diasDeTreino && rotinaAtiva.diasDeTreino.length > 0 ? (
-              <div>
-                <h4 className="text-md font-semibold mb-3 mt-4 text-gray-700 dark:text-gray-300">Próximos Treinos da Rotina:</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {rotinaAtiva.diasDeTreino.sort((a,b) => a.ordemNaRotina - b.ordemNaRotina).map((dia) => {
-                    // <<< ADICIONADO CONSOLE.LOG AQUI >>>
-                    console.log(`[AlunoDashboardPage] Mapeando dia de treino: ID=${dia._id}, Identificador=${dia.identificadorDia}`);
+            {proximoDiaSugerido ? (
+                <Card className="border-blue-500 dark:border-blue-400 shadow-md bg-blue-50 dark:bg-blue-900/30">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-lg text-blue-700 dark:text-blue-300">Próximo Treino Sugerido</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-1">
+                        <p className="font-semibold">
+                            {proximoDiaSugerido.identificadorDia}
+                            {proximoDiaSugerido.nomeSubFicha && ` - ${proximoDiaSugerido.nomeSubFicha}`}
+                        </p>
+                         <p className="text-xs text-muted-foreground mb-3">
+                            {proximoDiaSugerido.exerciciosDoDia.length} exercício(s) neste dia.
+                        </p>
+                    </CardContent>
+                    <CardFooter>
+                        <Button 
+                            className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                            onClick={() => {
+                                if (!proximoDiaSugerido._id) return;
+                                navigate(`/aluno/ficha/${rotinaAtiva._id}?diaId=${proximoDiaSugerido._id}`)
+                            }}
+                        >
+                            <PlayCircle className="w-4 h-4 mr-2" />
+                            Iniciar Treino Sugerido
+                        </Button>
+                    </CardFooter>
+                </Card>
+            ) : (
+              rotinaAtiva.totalSessoesRotinaPlanejadas && rotinaAtiva.sessoesRotinaConcluidas >= rotinaAtiva.totalSessoesRotinaPlanejadas ? (
+                 <div className="p-4 text-center bg-green-100 dark:bg-green-800/40 border border-green-300 dark:border-green-600 rounded-md">
+                    <CheckCircle2 className="w-10 h-10 text-green-600 dark:text-green-400 mx-auto mb-2" />
+                    <p className="font-semibold text-green-700 dark:text-green-300">Parabéns! Você concluiu todas as sessões planejadas para esta rotina!</p>
+                    <p className="text-xs text-muted-foreground mt-1">Fale com seu personal para os próximos passos.</p>
+                 </div>
+              ) : (
+                 <p className="text-sm text-muted-foreground text-center py-4">Não há próximo treino sugerido ou a rotina está completa.</p>
+              )
+            )}
+
+            {rotinaAtiva.diasDeTreino && rotinaAtiva.diasDeTreino.length > 0 && (
+              <div className="pt-4">
+                <h4 className="text-md font-semibold mb-3 text-gray-700 dark:text-gray-300">Dias da Rotina:</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {rotinaAtiva.diasDeTreino
+                    .filter(dia => dia._id !== proximoDiaSugerido?._id) 
+                    .sort((a,b) => a.ordemNaRotina - b.ordemNaRotina)
+                    .map((dia) => {
+                    const concluidoNestaSemana = diasConcluidosNestaSemanaIdsSet.has(dia._id);
+                    const isProximoSugerido = dia._id === proximoDiaSugerido?._id; // Esta verificação é redundante por causa do filter acima, mas mantida por clareza
                     const targetUrl = `/aluno/ficha/${rotinaAtiva._id}?diaId=${dia._id}`;
                     return (
-                      <Card key={dia._id} className="flex flex-col">
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-lg">
+                      <Card key={dia._id} className={`flex flex-col p-3 rounded-md transition-all hover:shadow-md 
+                                                    ${isProximoSugerido ? 'border-2 border-blue-500 dark:border-blue-400 bg-blue-50/50 dark:bg-blue-900/20' 
+                                                                       : concluidoNestaSemana ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700' 
+                                                                                             : 'bg-slate-50 dark:bg-slate-800/40'}`}>
+                        <div className="flex-grow mb-2">
+                          <p className={`font-medium text-sm ${isProximoSugerido ? 'text-blue-700 dark:text-blue-300' : ''}`}>
                             {dia.identificadorDia}
-                            {dia.nomeSubFicha && <span className="block text-sm font-normal text-muted-foreground">{dia.nomeSubFicha}</span>}
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex-grow">
-                          <p className="text-xs text-muted-foreground mb-3">
-                            {dia.exerciciosDoDia.length} exercício(s) neste dia.
+                            {dia.nomeSubFicha && <span className="text-xs text-muted-foreground"> - {dia.nomeSubFicha}</span>}
                           </p>
-                        </CardContent>
-                        <CardFooter>
-                          <Button 
-                            className="w-full"
-                            onClick={() => {
-                              // <<< ADICIONADO CONSOLE.LOG AQUI >>>
-                              console.log(`[AlunoDashboardPage] Botão "Iniciar Treino" clicado. Navegando para: ${targetUrl}`);
-                              if (!dia._id) {
-                                console.error("[AlunoDashboardPage] ERRO: dia._id está indefinido ao tentar navegar!");
-                                toast({ title: "Erro interno", description: "Não foi possível identificar o dia de treino.", variant: "destructive"});
-                                return;
-                              }
-                              navigate(targetUrl);
-                            }}
-                          >
-                            <PlayCircle className="w-4 h-4 mr-2" />
-                            Iniciar Treino
-                          </Button>
-                        </CardFooter>
+                          <p className="text-xs text-muted-foreground">
+                            {dia.exerciciosDoDia.length} exercício(s).
+                            {concluidoNestaSemana && <span className="ml-2 text-green-600 dark:text-green-400 font-semibold">(Feito!)</span>}
+                          </p>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          variant={isProximoSugerido ? "default" : (concluidoNestaSemana ? "outline" : "secondary")}
+                          className="w-full"
+                          onClick={() => {
+                            if (!dia._id) return;
+                            navigate(targetUrl);
+                          }}
+                        >
+                          {isProximoSugerido ? <PlayCircle className="w-4 h-4 mr-2" /> : (concluidoNestaSemana ? <RotateCcw className="w-4 h-4 mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />)}
+                          {isProximoSugerido ? "Iniciar Sugerido" : (concluidoNestaSemana ? "Ver/Repetir" : "Iniciar Treino")}
+                        </Button>
                       </Card>
                     );
                   })}
                 </div>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Esta rotina não possui dias de treino definidos.</p>
             )}
           </CardContent>
         </Card>
-      ) : (
+      ) : ( 
         !isLoadingRotinas && (
             <Card className="shadow-md">
                 <CardHeader>
@@ -251,10 +348,11 @@ const AlunoDashboardPage: React.FC = () => {
         )
       )}
 
-      {minhasRotinas && minhasRotinas.length > 1 && (
-        <Card className="shadow-lg">
+      {/* SEÇÃO LISTA GERAL DE ROTINAS */}
+      {minhasRotinas && minhasRotinas.length > 1 && ( 
+        <Card className="shadow-lg mt-8">
           <CardHeader>
-            <CardTitle className="flex items-center"><ListChecks className="w-6 h-6 mr-3 text-primary" />Outras Rotinas</CardTitle>
+            <CardTitle className="flex items-center"><ListChecks className="w-6 h-6 mr-3 text-primary" />Outras Rotinas Disponíveis</CardTitle>
             <CardDescription>Demais programas de treino atribuídos a você.</CardDescription>
           </CardHeader>
           <CardContent>

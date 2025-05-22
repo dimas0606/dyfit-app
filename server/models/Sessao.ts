@@ -1,7 +1,6 @@
 // server/models/Sessao.ts
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-// <<< AJUSTE AQUI: Adicionado 'treino_rotina' >>>
 export const TIPOS_COMPROMISSO = ['avaliacao', 'checkin', 'treino_acompanhado', 'outro', 'treino_rotina'] as const;
 export type TipoCompromisso = typeof TIPOS_COMPROMISSO[number];
 
@@ -32,6 +31,7 @@ export interface ISessaoLean {
   rotinaId: IPopulatedRotinaLean | string | null; 
   diaDeTreinoId: string | null; 
   diaDeTreinoIdentificador?: string | null;
+  nomeSubFichaDia?: string | null; // <<< ADICIONADO AQUI >>>
   sessionDate: string; 
   tipoCompromisso: TipoCompromisso;
   notes?: string; 
@@ -48,8 +48,9 @@ export interface ISessaoDocument extends Document {
   personalId: Types.ObjectId; 
   alunoId: Types.ObjectId; 
   rotinaId?: Types.ObjectId | null; 
-  diaDeTreinoId?: Types.ObjectId | null; // ID do subdocumento DiaDeTreino dentro da Rotina
-  diaDeTreinoIdentificador?: string | null; // O nome/identificador do dia (ex: "Segunda", "Treino A")
+  diaDeTreinoId?: Types.ObjectId | null; 
+  diaDeTreinoIdentificador?: string | null;
+  nomeSubFichaDia?: string | null; // <<< ADICIONADO AQUI >>>
   sessionDate: Date; 
   tipoCompromisso: TipoCompromisso;
   notes?: string; 
@@ -66,18 +67,18 @@ const SessaoSchema = new Schema<ISessaoDocument>(
     rotinaId: { type: Schema.Types.ObjectId, ref: 'Treino', required: false, default: null, index: true },
     diaDeTreinoId: { type: Schema.Types.ObjectId, required: false, default: null }, 
     diaDeTreinoIdentificador: { type: String, trim: true, default: null },
+    nomeSubFichaDia: { type: String, trim: true, default: null }, // <<< ADICIONADO AQUI >>>
     sessionDate: { type: Date, required: true },
     tipoCompromisso: {
       type: String,
       enum: { values: TIPOS_COMPROMISSO, message: 'Tipo de compromisso inválido: {VALUE}' },
       required: true,
-      // Removido o default: 'treino_acompanhado' para que seja explicitamente definido pela rota
     },
     notes: { type: String, trim: true },
     status: {
       type: String,
       enum: { values: ['pending', 'confirmed', 'completed', 'cancelled', 'skipped'], message: 'Status inválido: {VALUE}'},
-      default: 'pending', // Manter pending como default para sessões agendadas, 'completed' será setado na rota de concluir
+      default: 'pending',
       required: true,
     },
     concluidaEm: { type: Date, required: false, default: null },
@@ -103,6 +104,6 @@ const SessaoSchema = new Schema<ISessaoDocument>(
 
 SessaoSchema.index({ personalId: 1, sessionDate: 1 });
 SessaoSchema.index({ alunoId: 1, status: 1, sessionDate: 1 });
-SessaoSchema.index({ rotinaId: 1, diaDeTreinoId: 1 }); // Adicionado para otimizar buscas por rotina/dia
+SessaoSchema.index({ rotinaId: 1, diaDeTreinoId: 1 });
 
 export default mongoose.model<ISessaoDocument>('Sessao', SessaoSchema);

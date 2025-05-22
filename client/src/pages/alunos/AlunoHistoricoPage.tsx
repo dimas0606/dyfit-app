@@ -1,36 +1,36 @@
 // Caminho: ./client/src/pages/alunos/AlunoHistoricoPage.tsx
-import React, { useState } from 'react'; // Adicionado useState para paginação
+import React, { useState } from 'react';
 import { useAluno } from '@/context/AlunoContext';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'; // Adicionado CardFooter para paginação
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { Loader2, ArrowLeft, ListChecks, MessageSquareText, Star, CalendarDays, AlertTriangle, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'; // Adicionado ChevronLeft, ChevronRight, ExternalLink
+import { Loader2, ArrowLeft, ListChecks, MessageSquareText, Star, CalendarDays, AlertTriangle, ChevronLeft, ChevronRight, ExternalLink, Zap } from 'lucide-react';
 import { Link as WouterLink } from 'wouter';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// Mantendo a definição de OPCOES_PSE_FRONTEND aqui por enquanto
 const OPCOES_PSE_FRONTEND = ['Muito Leve', 'Leve', 'Moderado', 'Intenso', 'Muito Intenso', 'Máximo Esforço'] as const;
 type OpcaoPSEFrontend = typeof OPCOES_PSE_FRONTEND[number];
 
 interface SessaoHistorico {
   _id: string;
-  sessionDate: string;
-  concluidaEm: string;
-  tipoCompromisso: string;
+  sessionDate: string; 
+  concluidaEm: string; 
+  tipoCompromisso: string; 
   status: string;
-  workoutPlanId?: {
+  rotinaId?: { 
     _id: string;
-    titulo: string;
+    titulo: string; 
   } | null;
-  trainerId?: {
+  diaDeTreinoIdentificador?: string | null; 
+  nomeSubFichaDia?: string | null; // <<< CAMPO JÁ DEVE ESTAR AQUI E VIR DO BACKEND
+  personalId?: { 
     _id: string;
     nome: string;
   } | null;
   pseAluno?: OpcaoPSEFrontend | null;
   comentarioAluno?: string | null;
-  notes?: string;
 }
 
 interface HistoricoSessoesResponse {
@@ -43,7 +43,7 @@ interface HistoricoSessoesResponse {
 const AlunoHistoricoPage: React.FC = () => {
   const { aluno, tokenAluno } = useAluno();
   const [currentPage, setCurrentPage] = useState(1);
-  const SESSIONS_PER_PAGE = 5; // Quantas sessões mostrar por página
+  const SESSIONS_PER_PAGE = 5;
 
   const queryEnabled = !!aluno && !!tokenAluno;
 
@@ -51,10 +51,9 @@ const AlunoHistoricoPage: React.FC = () => {
     data: historicoData, 
     isLoading: isLoadingHistorico, 
     error: errorHistorico,
-    isFetching: isFetchingHistorico, // Para feedback de loading em mudanças de página
-    refetch: refetchHistorico // Para um botão de atualizar, se desejado
+    isFetching: isFetchingHistorico,
   } = useQuery<HistoricoSessoesResponse, Error>({
-    queryKey: ['alunoHistoricoSessoes', aluno?.id, currentPage, SESSIONS_PER_PAGE], // Incluir página e limite na chave
+    queryKey: ['alunoHistoricoSessoes', aluno?.id, currentPage, SESSIONS_PER_PAGE],
     queryFn: async () => {
       if (!aluno?.id) {
         throw new Error("Aluno não autenticado para buscar histórico.");
@@ -65,23 +64,16 @@ const AlunoHistoricoPage: React.FC = () => {
       );
     },
     enabled: queryEnabled,
-    placeholderData: (previousData) => previousData, // Mantém dados antigos enquanto busca novos
-    // staleTime: 1000 * 60 * 2, // Cache de 2 minutos
+    placeholderData: (previousData) => previousData,
   });
 
   if (!aluno && queryEnabled && (isLoadingHistorico || isFetchingHistorico)) { 
-    return (
-        <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] p-4">
-            <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-            <p className="text-muted-foreground">Carregando dados do aluno...</p>
-        </div>
-    );
+    return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] p-4"> <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" /> <p className="text-muted-foreground">Carregando dados do aluno...</p> </div> );
   }
   if (!aluno && !tokenAluno && !queryEnabled) {
       return ( <div className="flex h-screen w-full items-center justify-center"> <p>Sessão inválida ou expirada. Por favor, <WouterLink href="/aluno/login" className="text-primary hover:underline">faça login</WouterLink> novamente.</p> </div> );
   }
   
-
   const formatarDataHora = (dataISO?: string): string => {
     if (!dataISO) return 'N/A';
     try { return format(parseISO(dataISO), "dd/MM/yy 'às' HH:mm", { locale: ptBR }); }
@@ -108,7 +100,7 @@ const AlunoHistoricoPage: React.FC = () => {
           <CardDescription>Revise seus treinos concluídos e seu feedback.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoadingHistorico && !historicoData && ( // Mostrar loading inicial apenas se não houver dados prévios
+          {isLoadingHistorico && !historicoData && (
             <div className="flex flex-col items-center justify-center py-10">
               <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
               <p className="text-muted-foreground">Carregando seu histórico...</p>
@@ -134,23 +126,39 @@ const AlunoHistoricoPage: React.FC = () => {
                     <div className="flex justify-between items-start">
                         <div>
                             <CardTitle className="text-lg">
-                                {sessao.workoutPlanId ? sessao.workoutPlanId.titulo : `Sessão de ${sessao.tipoCompromisso.replace('_', ' ')}`}
+                                {sessao.rotinaId?.titulo ? (
+                                    <>
+                                        {sessao.rotinaId.titulo}
+                                        {/* <<< AJUSTE AQUI para mostrar diaDeTreinoIdentificador e nomeSubFichaDia >>> */}
+                                        {(sessao.diaDeTreinoIdentificador || sessao.nomeSubFichaDia) && (
+                                            <span className="block text-base font-normal text-muted-foreground">
+                                                Dia: {sessao.diaDeTreinoIdentificador}
+                                                {sessao.nomeSubFichaDia && ` - ${sessao.nomeSubFichaDia}`}
+                                            </span>
+                                        )}
+                                    </>
+                                ) : (
+                                    sessao.tipoCompromisso.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
+                                )}
                             </CardTitle>
-                            <CardDescription className="text-xs">
-                                Concluído em: {formatarDataHora(sessao.concluidaEm)} <br />
-                                (Sessão originalmente para: {formatarDataHora(sessao.sessionDate)})
+                            <CardDescription className="text-xs mt-1">
+                                Concluído em: {formatarDataHora(sessao.concluidaEm)}
+                                {sessao.concluidaEm !== sessao.sessionDate && (
+                                    <span className="block text-slate-400 dark:text-slate-500">(Originalmente para: {formatarDataHora(sessao.sessionDate)})</span>
+                                )}
                             </CardDescription>
                         </div>
-                        {sessao.workoutPlanId && (
-                             <WouterLink href={`/aluno/ficha/${sessao.workoutPlanId._id}`}>
+                        {sessao.rotinaId && sessao.diaDeTreinoIdentificador && ( // Mantém link para dia específico se tiver identificador do dia
+                             <WouterLink href={`/aluno/ficha/${sessao.rotinaId._id}?diaId=${sessao.diaDeTreinoId}`}>
                                 <Button variant="outline" size="sm" className="text-xs">
-                                    Ver Ficha <ExternalLink className="w-3 h-3 ml-1.5"/>
+                                    Ver Detalhes <ExternalLink className="w-3 h-3 ml-1.5"/>
                                 </Button>
                             </WouterLink>
                         )}
                     </div>
                   </CardHeader>
-                  <CardContent className="text-sm space-y-2">
+                  <CardContent className="text-sm space-y-2 pt-2">
+                    {sessao.tipoCompromisso === 'treino_rotina' && <Zap className="w-4 h-4 inline-block mr-1 text-yellow-500" title="Treino de Rotina" />}
                     {sessao.pseAluno && (
                       <div className="flex items-center gap-2">
                         <Star className="w-4 h-4 text-yellow-500" /> 
@@ -166,8 +174,8 @@ const AlunoHistoricoPage: React.FC = () => {
                         </div>
                       </div>
                     )}
-                    {(!sessao.pseAluno && !sessao.comentarioAluno) && (
-                        <p className="text-xs text-muted-foreground italic">Nenhum feedback fornecido para esta sessão.</p>
+                    {(!sessao.pseAluno && !sessao.comentarioAluno && sessao.tipoCompromisso === 'treino_rotina') && (
+                        <p className="text-xs text-muted-foreground italic">Nenhum feedback de PSE ou comentário fornecido para este treino.</p>
                     )}
                   </CardContent>
                 </Card>
@@ -175,7 +183,6 @@ const AlunoHistoricoPage: React.FC = () => {
             </div>
           )}
 
-          {/* Controles de Paginação */}
           {historicoData && historicoData.totalPages > 1 && (
             <CardFooter className="pt-6 flex items-center justify-between border-t mt-6">
               <Button
