@@ -23,8 +23,9 @@ interface SessaoHistorico {
     _id: string;
     titulo: string; 
   } | null;
+  diaDeTreinoId?: string | null; // <<< ADICIONADO PARA CORRIGIR ERRO TS E PARA USO NO LINK
   diaDeTreinoIdentificador?: string | null; 
-  nomeSubFichaDia?: string | null; // <<< CAMPO JÁ DEVE ESTAR AQUI E VIR DO BACKEND
+  nomeSubFichaDia?: string | null; 
   personalId?: { 
     _id: string;
     nome: string;
@@ -129,10 +130,9 @@ const AlunoHistoricoPage: React.FC = () => {
                                 {sessao.rotinaId?.titulo ? (
                                     <>
                                         {sessao.rotinaId.titulo}
-                                        {/* <<< AJUSTE AQUI para mostrar diaDeTreinoIdentificador e nomeSubFichaDia >>> */}
                                         {(sessao.diaDeTreinoIdentificador || sessao.nomeSubFichaDia) && (
                                             <span className="block text-base font-normal text-muted-foreground">
-                                                Dia: {sessao.diaDeTreinoIdentificador}
+                                                Dia: {sessao.diaDeTreinoIdentificador || 'N/A'}
                                                 {sessao.nomeSubFichaDia && ` - ${sessao.nomeSubFichaDia}`}
                                             </span>
                                         )}
@@ -148,7 +148,8 @@ const AlunoHistoricoPage: React.FC = () => {
                                 )}
                             </CardDescription>
                         </div>
-                        {sessao.rotinaId && sessao.diaDeTreinoIdentificador && ( // Mantém link para dia específico se tiver identificador do dia
+                        {/* Ajuste no link para usar sessao.diaDeTreinoId */}
+                        {sessao.rotinaId && sessao.diaDeTreinoId && (
                              <WouterLink href={`/aluno/ficha/${sessao.rotinaId._id}?diaId=${sessao.diaDeTreinoId}`}>
                                 <Button variant="outline" size="sm" className="text-xs">
                                     Ver Detalhes <ExternalLink className="w-3 h-3 ml-1.5"/>
@@ -158,7 +159,8 @@ const AlunoHistoricoPage: React.FC = () => {
                     </div>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2 pt-2">
-                    {sessao.tipoCompromisso === 'treino_rotina' && <Zap className="w-4 h-4 inline-block mr-1 text-yellow-500" title="Treino de Rotina" />}
+                    {/* <<< AJUSTE AQUI: Removido title da prop do ícone Zap >>> */}
+                    {sessao.tipoCompromisso === 'treino_rotina' && <Zap className="w-4 h-4 inline-block mr-1 text-yellow-500" />}
                     {sessao.pseAluno && (
                       <div className="flex items-center gap-2">
                         <Star className="w-4 h-4 text-yellow-500" /> 
