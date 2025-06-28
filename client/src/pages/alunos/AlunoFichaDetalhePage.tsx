@@ -120,7 +120,6 @@ const AlunoFichaDetalhePage: React.FC = () => {
     isLoading: isLoadingRotina,
     error: errorRotina,
     refetch: refetchRotina,
-    status: rotinaQueryStatus,
   } = useQuery<RotinaDeTreinoAluno, Error>({ 
     queryKey: ['alunoRotinaDetalhe', rotinaIdUrl, aluno?.id, diaIdUrl],
     queryFn: async () => {
@@ -243,17 +242,6 @@ const AlunoFichaDetalhePage: React.FC = () => {
     });
   };
 
-  // <<< FUNÇÕES RESTAURADAS AQUI >>>
-  const formatarDataSimplesLocal = (dataISO?: string): string => {
-    if (!dataISO) return 'N/A';
-    try { 
-      const date = parseISO(dataISO);
-      if(!isDateValidFn(date)) return 'Data inválida';
-      return format(date, "dd/MM/yyyy", { locale: ptBR }); 
-    }
-    catch (e) { return 'Data inválida'; }
-  };
-
   const abrirVideo = (url?: string) => {
     if (url) {
       let videoUrlParaModal = url;
@@ -271,7 +259,6 @@ const AlunoFichaDetalhePage: React.FC = () => {
       toast({ title: "Vídeo não disponível", description: "Não há URL de vídeo para este exercício." });
     }
   };
-  // <<< FIM DAS FUNÇÕES RESTAURADAS >>>
 
   if (isLoadingRotina && queryEnabled) { 
     return ( <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] p-4"> <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" /> <p className="text-lg text-gray-700 dark:text-gray-300">A carregar detalhes da rotina...</p> </div> );
