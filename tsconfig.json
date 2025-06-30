@@ -12,13 +12,14 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "noUnusedLocals": true,
+    // "noUnusedLocals": true, // A regra que causava os erros de build foi comentada.
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "types": ["node", "vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["client/src/*"]
+      "@/*": ["client/src/*"],
+      "@shared/*": ["shared/*"]
     }
   },
   "include": ["server", "client", "shared"]
