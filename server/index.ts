@@ -1,6 +1,6 @@
 // server/index.ts
 import "dotenv/config";
-import express, { RequestHandler, ErrorRequestHandler } from "express";
+import express, { RequestHandler, ErrorRequestHandler, Response, NextFunction, Request } from "express";
 import cors from "cors";
 
 // --- Importação das Rotas ---
@@ -16,15 +16,13 @@ import activityLogsRoutes from "./src/routes/activityLogsRoutes";
 import publicContatosRoutes from "./src/routes/publicContatosRoutes";
 import adminRoutes from "./src/routes/adminRoutes";
 import convitePublicRoutes from "./src/routes/convitePublicRoutes";
-// ***** NOVA IMPORTAÇÃO PARA ROTAS DA API DO ALUNO *****
-import alunoApiRoutes from "./src/routes/alunoApiRoutes"; // <<< ADICIONADO
+import alunoApiRoutes from "./src/routes/alunoApiRoutes";
 
 // --- Importação dos Middlewares ---
 import { errorHandler } from "./middlewares/errorHandler";
-import { authenticateToken } from "./middlewares/authenticateToken"; // Para Personal/Admin
+import { authenticateToken } from "./middlewares/authenticateToken";
 import { authorizeAdmin } from "./middlewares/authorizeAdmin";
-// ***** NOVA IMPORTAÇÃO PARA MIDDLEWARE DE AUTENTICAÇÃO DO ALUNO *****
-import { authenticateAlunoToken } from "./middlewares/authenticateAlunoToken"; // <<< ADICIONADO
+import { authenticateAlunoToken } from "./middlewares/authenticateAlunoToken";
 
 // --- Conexão com Banco de Dados ---
 import { connectToDatabase } from "./database";
@@ -44,41 +42,32 @@ async function startServer() {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
-    app.use((req, res, next) => {
+    app.use((req: Request, _res: Response, next: NextFunction) => {
         console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
         next();
     });
     
     console.log("🔄 Registrando rotas da API...");
 
-    // --- ROTAS PÚBLICAS (sem autenticação obrigatória global) ---
-    // Rotas de autenticação para Personal/Admin e Aluno, registro de aluno por convite, etc.
+    // --- ROTAS PÚBLICAS ---
     app.use("/api/auth", authRoutes); 
     app.use("/api/public/contatos", publicContatosRoutes);
-    app.use("/api/convites", convitePublicRoutes); // Rotas públicas para validar e usar convites de Personal
+    app.use("/api/convites", convitePublicRoutes);
     console.log("✅ Rotas públicas (/api/auth, /api/public/contatos, /api/convites) registradas.");
 
     // --- ROTAS PROTEGIDAS PARA ALUNOS ---
-    // Estas rotas exigem um token JWT de Aluno válido.
-    // O middleware authenticateAlunoToken verificará isso.
-    // Todas as rotas dentro de alunoApiRoutes (ex: /api/aluno/meus-treinos) serão protegidas.
-    app.use("/api/aluno", authenticateAlunoToken as RequestHandler, alunoApiRoutes); // <<< ADICIONADO
+    app.use("/api/aluno", authenticateAlunoToken as RequestHandler, alunoApiRoutes);
     console.log("🧑‍🎓 Rotas da API do Aluno (/api/aluno) registradas e protegidas para role 'Aluno'.");
     
-    // --- APLICA MIDDLEWARE DE AUTENTICAÇÃO GERAL PARA OUTRAS ROTAS /api/* (Personal/Admin) ---
-    // Todas as rotas definidas abaixo desta linha exigirão um token JWT válido de Personal ou Admin.
-    // O authenticateToken verifica o token, mas não impede o acesso se for um token de Aluno.
-    // A autorização específica (ex: authorizeAdmin ou lógica dentro das rotas) deve tratar disso.
+    // --- MIDDLEWARE DE AUTENTICAÇÃO GERAL (Personal/Admin) ---
     app.use("/api/*", authenticateToken as RequestHandler);
     console.log("🔒 Middleware de autenticação geral (Personal/Admin) aplicado às demais rotas /api/*.");
 
-    // --- ROTAS ESPECÍFICAS DE ADMIN (Personal/Admin já autenticado, authorizeAdmin verifica a role) ---
+    // --- ROTAS ESPECÍFICAS DE ADMIN ---
     app.use("/api/admin", authorizeAdmin as RequestHandler, adminRoutes);
     console.log("👑 Rotas de Admin (/api/admin) registradas e protegidas para role 'Admin'.");
 
     // --- ROTAS PROTEGIDAS PARA PERSONAL/ADMIN ---
-    // Acessíveis por Personal ou Admin autenticado.
-    // A lógica interna da rota pode ter mais verificações se necessário.
     app.use("/api/alunos", alunosRoutes);
     app.use("/api/exercicios", exerciciosRouter);
     app.use("/api/treinos", treinosRouter);
@@ -91,6 +80,7 @@ async function startServer() {
 
     app.use(errorHandler as ErrorRequestHandler);
     console.log("✅ Middleware de tratamento de erros registrado.");
+
 
     app.listen(PORT, () => {
         console.log(`🚀 Servidor backend rodando na porta ${PORT}`);

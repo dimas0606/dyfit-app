@@ -1,6 +1,6 @@
 // server/models/PersonalTrainer.ts
 import mongoose, { Schema, Document } from 'mongoose';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto'; // Importar crypto para gerar o token
 
 // Interface atualizada para incluir todos os campos planejados

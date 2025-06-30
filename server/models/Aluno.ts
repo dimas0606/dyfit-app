@@ -1,6 +1,6 @@
 // server/models/Aluno.ts
-import mongoose, { Schema, Document } from "mongoose"; // Document importado
-import bcrypt from 'bcrypt'; // Importar bcrypt para hashear senhas
+import mongoose, { Schema, Document } from "mongoose";
+import bcrypt from 'bcryptjs'; // <<< ALTERAÇÃO AQUI: de 'bcrypt' para 'bcryptjs'
 
 console.log("--- [server/models/Aluno.ts] Modelo Carregado (com funcionalidade de senha) ---");
 
@@ -18,28 +18,27 @@ export interface IAluno extends Document {
   startDate: string; 
   status: 'active' | 'inactive';
   notes?: string;
-  trainerId: mongoose.Types.ObjectId; // Mantido como ObjectId
+  trainerId: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
   // Método para comparar senhas
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
-const alunoSchema = new Schema<IAluno>( // Tipando o Schema com IAluno
+const alunoSchema = new Schema<IAluno>(
   {
     nome: { type: String, required: [true, 'O nome completo é obrigatório'], trim: true },
     email: {
         type: String,
         required: [true, 'O email é obrigatório'],
-        unique: true, // Garante que o email seja único
+        unique: true, 
         lowercase: true,
         trim: true,
-        // match: [/^\S+@\S+\.\S+$/, 'Por favor, use um email válido'] // Descomente se quiser validação de formato de email mais estrita
     },
-    passwordHash: { // Novo campo para a senha hasheada
+    passwordHash: {
         type: String,
-        required: [true, 'A senha é obrigatória'], // Senha será obrigatória para alunos
-        select: false, // Não retorna o hash da senha por padrão nas queries
+        required: [true, 'A senha é obrigatória'],
+        select: false,
     },
     phone: { type: String, trim: true },
     birthDate: { type: String, required: [true, 'A data de nascimento é obrigatória'] },
@@ -63,31 +62,26 @@ const alunoSchema = new Schema<IAluno>( // Tipando o Schema com IAluno
 
 // Hook pre-save para hashear a senha ANTES de salvar, se ela foi modificada
 alunoSchema.pre<IAluno>('save', async function (next) {
-    // 'this' se refere ao documento Aluno que está sendo salvo
-    if (!this.isModified('passwordHash')) { // Só faz o hash se a senha (passwordHash) foi modificada ou é nova
+    if (!this.isModified('passwordHash')) { 
         return next();
     }
     try {
-        const saltRounds = 10; // Custo do salt (padrão é 10)
-        if (this.passwordHash) { // Garante que passwordHash não é undefined
+        const saltRounds = 10;
+        if (this.passwordHash) {
             this.passwordHash = await bcrypt.hash(this.passwordHash, saltRounds);
         }
         next();
-    } catch (error: any) { // Especificar 'any' ou um tipo de erro mais específico
-        next(error); // Passa o erro para o próximo middleware/error handler
+    } catch (error: any) { 
+        next(error);
     }
 });
 
 // Método para comparar a senha candidata com o hash armazenado no documento
 alunoSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
-    if (!this.passwordHash) { // Se por algum motivo o hash não estiver presente
+    if (!this.passwordHash) {
         return false;
     }
     return bcrypt.compare(candidatePassword, this.passwordHash);
 };
-
-
-// Index para garantir unicidade do email, se não for feito automaticamente pelo 'unique: true' em alguns drivers/versões
-// alunoSchema.index({ email: 1 }, { unique: true }); // Descomente se necessário
 
 export default mongoose.model<IAluno>("Aluno", alunoSchema);
