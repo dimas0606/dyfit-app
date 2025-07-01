@@ -30,8 +30,8 @@
     "NODE_ENV": "production",
     "MONGODB_URI": "@mongodb_uri",
     "JWT_SECRET": "@jwt_secret",
-    "VITE_API_URL": "https://[SEU_PROJETO].vercel.app/api",
-    "FRONTEND_URL": "https://[SEU_PROJETO].vercel.app"
+    "VITE_API_URL": "https://dyfit-app.vercel.app/api",
+    "FRONTEND_URL": "https://dyfit-app.vercel.app"
   },
   "installCommand": "yarn install --frozen-lockfile",
   "buildCommand": "yarn run build",
