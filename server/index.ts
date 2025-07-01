@@ -33,9 +33,14 @@ app.use(express.json()); // Para parsear JSON no corpo das requisições
 
 // Conexão com o MongoDB
 // Certifique-se de que MONGODB_URI está configurado nas variáveis de ambiente da Vercel
+console.log('Tentando conectar ao MongoDB...'); // Adicione este log
 mongoose.connect(process.env.MONGODB_URI as string)
   .then(() => console.log('Conectado ao MongoDB!'))
-  .catch(err => console.error('Erro ao conectar ao MongoDB:', err));
+  .catch(err => {
+    console.error('Erro FATAL ao conectar ao MongoDB:', err); // Log mais explícito
+    // Opcional: Se quiser que o servidor não inicie se a DB não conectar
+    // process.exit(1); 
+  });
 
 // Exemplo de rota de teste (adicione se não tiver uma)
 app.get('/api/health', (req, res) => {
@@ -51,6 +56,13 @@ app.get('/api/health', (req, res) => {
 // process.env.PORT é a porta que a Vercel (ou qualquer ambiente de produção) fornece.
 // O || 8080 é um fallback para desenvolvimento local, se PORT não estiver definido.
 const PORT = process.env.PORT || 8080; 
+
+console.log(`Variáveis de Ambiente:`); // Adicione logs para depurar
+console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`FRONTEND_URL: ${process.env.FRONTEND_URL}`);
+console.log(`MONGODB_URI (primeiros 10 chars): ${process.env.MONGODB_URI?.substring(0, 10)}...`); // Não logue a URI completa por segurança
+console.log(`JWT_SECRET (presente?): ${!!process.env.JWT_SECRET}`); // Apenas verifica se existe
+console.log(`PORT: ${PORT}`);
 
 app.listen(PORT, () => {
   console.log(`Servidor Express rodando na porta ${PORT}`);
