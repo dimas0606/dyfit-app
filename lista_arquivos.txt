@@ -1,3 +1,4 @@
+./client/postcss.config.js
 ./client/src/App.tsx
 ./client/src/components/ErrorMessage.tsx
 ./client/src/components/LoadingSpinner.tsx
@@ -131,7 +132,6 @@
 ./drizzle.config.ts
 ./postcss.config.js
 ./server/database.ts
-./server/index.ts
 ./server/middlewares/authenticateAlunoToken.ts
 ./server/middlewares/authenticateToken.ts
 ./server/middlewares/authorizeAdmin.ts
@@ -161,6 +161,7 @@
 ./server/src/routes/treinos.ts
 ./server/storage.ts
 ./server/vite.ts
+./server/index.ts
 ./shared/schema.ts
 ./shared/types/express/index.d.ts
 ./shared/types/personal.ts
