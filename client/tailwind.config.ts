@@ -63,7 +63,9 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/typography'), // ✅ Adicionado
+  ],
 };
 
 export default config;
