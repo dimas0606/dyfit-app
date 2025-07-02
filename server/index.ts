@@ -1,67 +1,74 @@
 // server/index.ts
 import dotenv from 'dotenv';
-// É crucial que dotenv.config() seja chamado o mais cedo possível
-// para que as variáveis de ambiente (incluindo PORT) estejam disponíveis.
-dotenv.config(); 
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 import express from 'express';
 import mongoose from 'mongoose';
-import cors from 'cors'; // Importe o CORS se ainda não o fez
-// ... outras importações de rotas, middlewares, etc.
+import cors from 'cors';
+
+import authRoutes from './src/routes/authRoutes';
+import dashboardRoutes from './src/routes/dashboardGeralRoutes';
+import alunoRoutes from './src/routes/alunos';
+import treinoRoutes from './src/routes/treinos';
+import exercicioRoutes from './src/routes/exercicios';
+import sessionsRoutes from './src/routes/sessionsRoutes';
+import pastaRoutes from './src/routes/pastasTreinos';
+import { authenticateToken } from './middlewares/authenticateToken';
 
 const app = express();
 
-// Configuração CORS - MUITO IMPORTANTE para produção
 const allowedOrigins = [
-  'http://localhost:5173', // Para desenvolvimento local
-  process.env.FRONTEND_URL // A URL do seu frontend no Vercel
+  'http://localhost:5173',
+  process.env.FRONTEND_URL
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // Permite requisições sem 'origin' (ex: Postman)
+    if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) === -1) {
       const msg = `A política CORS para este site não permite acesso da Origem especificada: ${origin}`;
       return callback(new Error(msg), false);
     }
     return callback(null, true);
   },
-  credentials: true // Se você usa cookies ou headers de autorização
+  credentials: true
 }));
 
-app.use(express.json()); // Para parsear JSON no corpo das requisições
+app.use(express.json());
 
-// Conexão com o MongoDB
-// Certifique-se de que MONGODB_URI está configurado nas variáveis de ambiente da Vercel
-console.log('Tentando conectar ao MongoDB...'); // Adicione este log
+console.log('--- [server/models/Aluno.ts] Modelo Carregado (com funcionalidade de senha) ---');
+console.log('--- [server/src/routes/dashboardGeralRoutes.ts] Ficheiro carregado e rota GET / definida ---');
+console.log('Tentando conectar ao MongoDB...');
+
 mongoose.connect(process.env.MONGODB_URI as string)
   .then(() => console.log('Conectado ao MongoDB!'))
   .catch(err => {
-    console.error('Erro FATAL ao conectar ao MongoDB:', err); // Log mais explícito
-    // Opcional: Se quiser que o servidor não inicie se a DB não conectar
-    // process.exit(1); 
+    console.error('Erro FATAL ao conectar ao MongoDB:', err);
   });
 
-// Exemplo de rota de teste (adicione se não tiver uma)
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (_req, res) => {
   res.status(200).json({ status: 'API está funcionando!', environment: process.env.NODE_ENV });
 });
 
-// Suas rotas da API
-// Exemplo: app.use('/api/auth', authRoutes);
-// Exemplo: app.use('/api/users', userRoutes);
-// ... adicione todas as suas rotas aqui
+app.use('/api/auth', authRoutes);
+app.use('/api/dashboard/geral', dashboardRoutes);
+app.use('/api/alunos', authenticateToken, alunoRoutes);
+app.use('/api/treinos', authenticateToken, treinoRoutes);
+app.use('/api/exercicios', authenticateToken, exercicioRoutes);
+app.use('/api/sessions', authenticateToken, sessionsRoutes);
+app.use('/api/pastas/treinos', authenticateToken, pastaRoutes);
 
-// A porta que o servidor Express vai escutar.
-// process.env.PORT é a porta que a Vercel (ou qualquer ambiente de produção) fornece.
-// O || 8080 é um fallback para desenvolvimento local, se PORT não estiver definido.
-const PORT = process.env.PORT || 8080; 
+const PORT = process.env.PORT || 8080;
 
-console.log(`Variáveis de Ambiente:`); // Adicione logs para depurar
+console.log(`Variáveis de Ambiente:`);
 console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`FRONTEND_URL: ${process.env.FRONTEND_URL}`);
-console.log(`MONGODB_URI (primeiros 10 chars): ${process.env.MONGODB_URI?.substring(0, 10)}...`); // Não logue a URI completa por segurança
-console.log(`JWT_SECRET (presente?): ${!!process.env.JWT_SECRET}`); // Apenas verifica se existe
+console.log(`MONGODB_URI (primeiros 10 chars): ${process.env.MONGODB_URI?.substring(0, 10)}...`);
+console.log(`JWT_SECRET (presente?): ${!!process.env.JWT_SECRET}`);
 console.log(`PORT: ${PORT}`);
 
 app.listen(PORT, () => {
