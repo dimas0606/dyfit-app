@@ -7,7 +7,7 @@
     "dev": "concurrently -k --kill-others-on-fail --name \"SERVER,CLIENT\" -c \"bgBlue.bold,bgGreen.bold\" \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "NODE_ENV=development tsx server/index.ts",
     "dev:client": "vite --config client/vite.config.ts --host",
-    "build:client": "cd client && npm install && npm run build",
+    "build:client": "vite build --config client/vite.config.ts",
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --outfile=dist/server/index.js --external:express --external:mongoose --external:cors --external:jsonwebtoken --external:bcryptjs --external:ms --external:jwt-decode --external:dotenv",
     "build": "npm run build:client && npm run build:server"
   },
