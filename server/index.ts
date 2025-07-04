@@ -1,4 +1,5 @@
 // server/index.ts
+
 // ESTAS DUAS LINHAS DEVEM SER AS PRIMEIRAS DO ARQUIVO!
 import dotenv from 'dotenv';
 dotenv.config();
@@ -18,7 +19,7 @@ console.log('--- FIM DO DEBUG ---');
 // --- OUTRAS IMPORTAÇÕES VÊM DEPOIS DO DOTENV ---
 import express from 'express';
 import mongoose from 'mongoose';
-import cors from 'cors'; // <--- CORRIGIDO AQUI! Era uma URL incorreta.
+import cors from 'cors';
 // Certifique-se que o nome do arquivo é 'auth.ts' e não 'authRoutes.ts'
 import authRoutes from './src/routes/auth';
 import dashboardRoutes from './src/routes/dashboardGeralRoutes';
@@ -28,6 +29,10 @@ import exercicioRoutes from './src/routes/exercicios';
 import sessionsRoutes from './src/routes/sessionsRoutes';
 import pastaRoutes from './src/routes/pastasTreinos';
 import { authenticateToken } from './middlewares/authenticateToken';
+
+// ---> ADIÇÃO <---
+// Importa as rotas da API específica do Aluno
+import alunoApiRoutes from './src/routes/alunoApiRoutes';
 
 
 const app = express();
@@ -85,6 +90,10 @@ app.use('/api/treinos', authenticateToken, treinoRoutes);
 app.use('/api/exercicios', authenticateToken, exercicioRoutes);
 app.use('/api/sessions', authenticateToken, sessionsRoutes);
 app.use('/api/pastas/treinos', authenticateToken, pastaRoutes);
+
+// ---> ADIÇÃO <---
+// Registra as rotas da API do Aluno, protegendo-as com o middleware de autenticação
+app.use('/api/aluno', authenticateToken, alunoApiRoutes);
 
 
 // --- Inicialização do Servidor ---

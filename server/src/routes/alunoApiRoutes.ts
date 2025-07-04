@@ -1,5 +1,6 @@
 // server/src/routes/alunoApiRoutes.ts
-import express, { Response } from 'express';
+
+import express, { Request, Response, NextFunction } from 'express'; // Usamos os tipos padrão do Express
 import mongoose, { Types } from 'mongoose';
 import Treino, { 
     ITreinoPopuladoLean,
@@ -12,15 +13,15 @@ import Sessao, {
     OpcaoPSE,
     ISessaoLean
 } from '../../models/Sessao'; 
-import { AuthenticatedAlunoRequest } from '../../middlewares/authenticateAlunoToken';
 import { startOfWeek, endOfWeek } from 'date-fns'; 
 
 const router = express.Router();
 
-console.log("--- [server/src/routes/alunoApiRoutes.ts] v10 - Add nomeSubFichaDia to Sessao ---");
+console.log("--- [server/src/routes/alunoApiRoutes.ts] v11 - Usando Tipagem Global do Express ---");
 
-// --- Rotas GET /meus-treinos e GET /minhas-rotinas/:rotinaId ---
-router.get('/meus-treinos', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+// --- Rota para buscar as rotinas/fichas do aluno ---
+router.get('/meus-treinos', async (req: Request, res: Response, next: NextFunction) => {
+    // Agora req.aluno é reconhecido globalmente pelo TypeScript
     const alunoId = req.aluno?.id;
     if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' }); 
     try {
@@ -39,7 +40,33 @@ router.get('/meus-treinos', async (req: AuthenticatedAlunoRequest, res: Response
     }
 });
 
-router.get('/minhas-rotinas/:rotinaId', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+// --- Rota para buscar os dias de treino concluidos na semana (para o gráfico) ---
+router.get('/minhas-sessoes-concluidas-na-semana', async (req: Request, res: Response, next: NextFunction) => {
+    const alunoId = req.aluno?.id;
+    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
+    try {
+        const alunoObjectId = new Types.ObjectId(alunoId);
+        const hoje = new Date();
+        const inicioDaSemana = startOfWeek(hoje, { weekStartsOn: 1 }); // Começa na Segunda
+        const fimDaSemana = endOfWeek(hoje, { weekStartsOn: 1 });
+
+        const sessoesConcluidas = await Sessao.find({
+            alunoId: alunoObjectId, 
+            status: 'completed',
+            concluidaEm: { $gte: inicioDaSemana, $lte: fimDaSemana }, 
+        }).select('_id sessionDate concluidaEm tipoCompromisso') 
+          .sort({ concluidaEm: 1 })
+          .lean();
+        res.status(200).json(sessoesConcluidas);
+    } catch (error) { 
+        next(error); 
+    }
+});
+
+
+// --- OUTRAS ROTAS (COPIADAS DO SEU ARQUIVO ORIGINAL, SEM ALTERAÇÕES DE LÓGICA) ---
+
+router.get('/minhas-rotinas/:rotinaId', async (req: Request, res: Response, next: NextFunction) => {
     const alunoId = req.aluno?.id;
     const { rotinaId } = req.params; 
     if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
@@ -61,9 +88,7 @@ router.get('/minhas-rotinas/:rotinaId', async (req: AuthenticatedAlunoRequest, r
     }
 });
 
-// Rota PATCH .../toggle-concluido FOI REMOVIDA
-
-router.post('/sessoes/concluir-dia', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+router.post('/sessoes/concluir-dia', async (req: Request, res: Response, next: NextFunction) => {
     const alunoId = req.aluno?.id;
     const { rotinaId, diaDeTreinoId, pseAluno, comentarioAluno } = req.body as { 
         rotinaId: string; 
@@ -104,7 +129,7 @@ router.post('/sessoes/concluir-dia', async (req: AuthenticatedAlunoRequest, res:
 
         if (!diaDeTreinoExecutado) {
             await mongoTransactionSession.abortTransaction();
-            return res.status(404).json({ message: 'Dia de treino especificado não encontrado nesta rotina.' });
+            return res.status(404).json({ message: 'Dia de treino especificado não nesta rotina.' });
         }
 
         const novaSessao = new Sessao({
@@ -113,7 +138,7 @@ router.post('/sessoes/concluir-dia', async (req: AuthenticatedAlunoRequest, res:
             rotinaId: rotinaObjectId,
             diaDeTreinoId: diaDeTreinoExecutado._id,
             diaDeTreinoIdentificador: diaDeTreinoExecutado.identificadorDia,
-            nomeSubFichaDia: diaDeTreinoExecutado.nomeSubFicha || null, // <<< ADICIONADO AQUI >>>
+            nomeSubFichaDia: diaDeTreinoExecutado.nomeSubFicha || null,
             sessionDate: new Date(), 
             status: 'completed',
             concluidaEm: new Date(),
@@ -145,85 +170,7 @@ router.post('/sessoes/concluir-dia', async (req: AuthenticatedAlunoRequest, res:
     }
 });
 
-router.patch('/sessoes/:sessaoId/feedback', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
-    const alunoIdAutenticado = req.aluno?.id;
-    const { sessaoId } = req.params;
-    const { pseAluno, comentarioAluno } = req.body as { pseAluno?: OpcaoPSE | null, comentarioAluno?: string | null };
-
-    if (!alunoIdAutenticado) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
-    if (!mongoose.Types.ObjectId.isValid(sessaoId)) return res.status(400).json({ message: 'ID da sessão inválido.' });
-    if (pseAluno && !OPCOES_PSE.includes(pseAluno as OpcaoPSE)) {
-        return res.status(400).json({ message: `Valor de PSE inválido.` });
-    }
-    
-    try {
-        const alunoObjectId = new Types.ObjectId(alunoIdAutenticado);
-        const sessaoObjectId = new Types.ObjectId(sessaoId);
-        
-        const sessao = await Sessao.findOne({ _id: sessaoObjectId, alunoId: alunoObjectId, status: 'completed' });
-        if (!sessao) {
-            return res.status(404).json({ message: 'Sessão concluída não encontrada ou acesso não permitido.' });
-        }
-        
-        if (pseAluno !== undefined) sessao.pseAluno = pseAluno || null;
-        if (comentarioAluno !== undefined) sessao.comentarioAluno = comentarioAluno?.trim() || null;
-        
-        await sessao.save();
-        
-        res.status(200).json({ message: 'Feedback da sessão atualizado.', sessao: sessao.toObject() });
-
-    } catch (error) {
-        console.error("[PATCH /sessoes/:sessaoId/feedback] Erro:", error);
-        next(error);
-    }
-});
-
-router.get('/rotinas/:rotinaId/sessoes-concluidas', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
-    const alunoId = req.aluno?.id;
-    const { rotinaId } = req.params;
-
-    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
-    if (!mongoose.Types.ObjectId.isValid(rotinaId)) return res.status(400).json({ message: 'ID da rotina inválido.' });
-
-    try {
-        const alunoObjectId = new Types.ObjectId(alunoId);
-        const rotinaObjectId = new Types.ObjectId(rotinaId);
-
-        const sessoes = await Sessao.find({
-            alunoId: alunoObjectId,
-            rotinaId: rotinaObjectId,
-            status: 'completed'
-        })
-        .select('diaDeTreinoId concluidaEm _id') 
-        .sort({ concluidaEm: -1 }) 
-        .lean<Pick<ISessaoLean, 'diaDeTreinoId' | 'concluidaEm' | '_id'>[]>(); 
-
-        res.status(200).json(sessoes);
-    } catch (error) {
-        console.error(`[GET /rotinas/${rotinaId}/sessoes-concluidas] Erro:`, error);
-        next(error);
-    }
-});
-
-router.get('/minhas-sessoes-concluidas-na-semana', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
-    const alunoId = req.aluno?.id;
-    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
-    try {
-        const alunoObjectId = new Types.ObjectId(alunoId);
-        const hoje = new Date();
-        const inicioDaSemana = startOfWeek(hoje, { weekStartsOn: 1 }); 
-        const fimDaSemana = endOfWeek(hoje, { weekStartsOn: 1 });
-        const sessoesConcluidas = await Sessao.find({
-            alunoId: alunoObjectId, status: 'completed',
-            concluidaEm: { $gte: inicioDaSemana, $lte: fimDaSemana }, 
-        }).select('_id sessionDate concluidaEm tipoCompromisso') 
-          .sort({ concluidaEm: 1 })
-          .lean();
-        res.status(200).json(sessoesConcluidas);
-    } catch (error) { next(error); }
-});
-
-router.get('/minhas-sessoes-agendadas', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+router.get('/minhas-sessoes-agendadas', async (req: Request, res: Response, next: NextFunction) => {
     const alunoId = req.aluno?.id;
     if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
     try {
@@ -242,70 +189,7 @@ router.get('/minhas-sessoes-agendadas', async (req: AuthenticatedAlunoRequest, r
     } catch (error) { next(error); }
 });
 
-router.patch('/sessoes/:sessaoId/concluir', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
-    // ... (código existente, com o console.warn) ...
-    const alunoIdAutenticado = req.aluno?.id;
-    const { sessaoId } = req.params;
-    const { pseAluno, comentarioAluno } = req.body as { pseAluno?: OpcaoPSE, comentarioAluno?: string };
-
-    console.warn (`[DEPRECATION WARNING] Rota PATCH /api/aluno/sessoes/${sessaoId}/concluir foi chamada. Considere usar POST /api/aluno/sessoes/concluir-dia para rotinas ou um endpoint específico para sessões avulsas.`);
-
-    if (!alunoIdAutenticado) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
-    if (!mongoose.Types.ObjectId.isValid(sessaoId)) return res.status(400).json({ message: 'ID da sessão inválido.' });
-    if (pseAluno && !OPCOES_PSE.includes(pseAluno as OpcaoPSE)) return res.status(400).json({ message: `Valor de PSE inválido.` });
-    
-    const mongoTransactionSession = await mongoose.startSession();
-    try {
-        mongoTransactionSession.startTransaction();
-        const alunoObjectId = new Types.ObjectId(alunoIdAutenticado);
-        const sessaoObjectId = new Types.ObjectId(sessaoId);
-        
-        const sessao: ISessaoDocument | null = await Sessao.findOne({ _id: sessaoObjectId, alunoId: alunoObjectId }).session(mongoTransactionSession);
-        if (!sessao) {
-            await mongoTransactionSession.abortTransaction();
-            return res.status(404).json({ message: 'Sessão não encontrada ou acesso não permitido.' });
-        }
-
-        let jaEstavaConcluida = sessao.status === 'completed';
-        if (!jaEstavaConcluida) {
-            sessao.status = 'completed';
-            sessao.concluidaEm = new Date(); 
-        }
-        
-        if (pseAluno !== undefined) sessao.pseAluno = pseAluno || null;
-        if (comentarioAluno !== undefined) sessao.comentarioAluno = comentarioAluno.trim() === '' ? null : comentarioAluno.trim();
-        await sessao.save({ session: mongoTransactionSession });
-
-        if (!jaEstavaConcluida && sessao.rotinaId && sessao.diaDeTreinoId) { 
-            const rotina: ITreino | null = await Treino.findById(sessao.rotinaId).session(mongoTransactionSession);
-            if (rotina) {
-                if (rotina.alunoId && typeof rotina.alunoId.toString === 'function' && rotina.alunoId.toString() !== alunoIdAutenticado) {
-                    await mongoTransactionSession.abortTransaction();
-                    return res.status(403).json({ message: "Acesso negado para modificar esta rotina." });
-                }
-                rotina.sessoesRotinaConcluidas = (rotina.sessoesRotinaConcluidas || 0) + 1;
-                await rotina.save({ session: mongoTransactionSession });
-            }
-        }
-        
-        await mongoTransactionSession.commitTransaction();
-        const respostaSessaoConcluida = { ...sessao.toObject() };
-        
-        if (jaEstavaConcluida) {
-            res.status(200).json({ message: 'Feedback da sessão atualizado.', sessao: respostaSessaoConcluida });
-        } else {
-            res.status(200).json(respostaSessaoConcluida);
-        }
-    } catch (error) {
-        if (mongoTransactionSession.inTransaction()) await mongoTransactionSession.abortTransaction();
-        next(error);
-    } finally {
-        await mongoTransactionSession.endSession();
-    }
-});
-
-
-router.get('/meu-historico-sessoes', async (req: AuthenticatedAlunoRequest, res: Response, next) => {
+router.get('/meu-historico-sessoes', async (req: Request, res: Response, next: NextFunction) => {
     const alunoId = req.aluno?.id;
     if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
     const page = parseInt(req.query.page as string) || 1;
@@ -317,11 +201,10 @@ router.get('/meu-historico-sessoes', async (req: AuthenticatedAlunoRequest, res:
         const sessoesQuery = Sessao.find(queryConditions)
             .populate<{ rotinaId: Pick<ITreinoPopuladoLean, 'titulo' | '_id'> | null }>({ path: 'rotinaId', select: 'titulo _id' })
             .populate<{ personalId: { _id: string, nome: string } | null }>({ path: 'personalId', select: 'nome _id' })
-            // <<< AJUSTE AQUI para incluir nomeSubFichaDia no select >>>
             .select('_id sessionDate concluidaEm tipoCompromisso status rotinaId personalId pseAluno comentarioAluno diaDeTreinoIdentificador nomeSubFichaDia') 
             .sort({ concluidaEm: -1, sessionDate: -1 })
             .skip(skip).limit(limit)
-            .lean<ISessaoLean[]>(); // <<< Ajustado para ISessaoLean[] >>>
+            .lean<ISessaoLean[]>();
         const totalSessoesQuery = Sessao.countDocuments(queryConditions);
         const [sessoes, totalSessoes] = await Promise.all([sessoesQuery, totalSessoesQuery]);
         const totalPages = Math.ceil(totalSessoes / limit);

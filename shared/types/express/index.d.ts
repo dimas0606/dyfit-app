@@ -1,19 +1,31 @@
-// Caminho: server/src/types/express/index.d.ts
-// Certifique-se de que este caminho é incluído pelo seu tsconfig.json
+// shared/types/express/index.d.ts
 
-// Importa DecodedTokenPayload diretamente do seu local original.
-// Ajuste o caminho relativo se necessário.
-// Partindo de server/src/types/express/index.d.ts para server/middlewares/authenticateToken.ts
-import { DecodedTokenPayload } from '../../../middlewares/authenticateToken';
+// Interfaces para os payloads dos tokens JWT
+// Definimos aqui como a fonte da verdade para todo o projeto.
+interface PersonalTrainerPayload {
+    id: string;
+    role: 'personal' | 'admin';
+    firstName: string;
+    lastName: string;
+    email: string; // ---> CORREÇÃO CRÍTICA: Campo adicionado para sincronizar com o middleware
+}
 
+interface AlunoPayload {
+    id:string;
+    role: 'aluno';
+    nome: string;
+}
+
+// Declaração global para estender a interface Request do Express
+// Agora o TypeScript saberá que 'user' E 'aluno' podem existir no objeto 'req'
 declare global {
   namespace Express {
     interface Request {
-      user?: DecodedTokenPayload; // Usa a interface importada diretamente
+      user?: PersonalTrainerPayload;
+      aluno?: AlunoPayload;
     }
   }
 }
 
-// Linha vazia intencional para garantir que o arquivo seja tratado como um módulo.
-// Isso é importante para que 'declare global' funcione como esperado.
+// Linha necessária para garantir que este arquivo seja tratado como um módulo.
 export {};

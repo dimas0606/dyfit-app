@@ -1,13 +1,13 @@
-// Localização: client/src/context/AlunoContext.tsx
+// client/src/context/AlunoContext.tsx
 import React, { createContext, useState, useEffect, useContext, ReactNode, useCallback } from 'react';
 import { jwtDecode } from 'jwt-decode';
 
-// ***** CORREÇÃO: Adicionar 'export' aqui *****
-export interface AlunoLogado { // <<< EXPORT ADICIONADO
+// Interface do Aluno, agora esperando 'aluno' em minúsculo
+export interface AlunoLogado {
   id: string;
-  email: string;
-  nome?: string;
-  role: 'Aluno';
+  nome: string;
+  role: 'aluno'; // ---> CORREÇÃO: Espera o role em minúsculo
+  email: string; // Garantir que o email esteja presente
   personalId?: string;
   exp?: number;
   iat?: number;
@@ -48,12 +48,14 @@ export const AlunoProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         logoutAluno();
         return null;
       }
-      if (decodedToken.id && decodedToken.role === 'Aluno') {
+      
+      // ---> CORREÇÃO: Verifica por 'aluno' em minúsculo
+      if (decodedToken.id && decodedToken.role === 'aluno') {
         const alunoData: AlunoLogado = {
           id: decodedToken.id,
-          email: decodedToken.email,
           nome: decodedToken.nome,
           role: decodedToken.role,
+          email: decodedToken.email,
           personalId: decodedToken.personalId,
           exp: decodedToken.exp,
           iat: decodedToken.iat,
@@ -65,7 +67,7 @@ export const AlunoProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         console.log("Contexto Aluno: Dados do aluno definidos a partir do token:", alunoData);
         return alunoData;
       } else {
-        console.error("Contexto Aluno: Payload do token de aluno inválido:", decodedToken);
+        console.error("Contexto Aluno: Payload do token de aluno inválido (role incorreto ou id faltando):", decodedToken);
         logoutAluno();
         return null;
       }
@@ -75,7 +77,8 @@ export const AlunoProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       return null;
     }
   }, [logoutAluno]);
-
+  
+  // O resto do arquivo (loginAluno, checkAlunoSession, etc.) não precisa de alterações
   const loginAluno = useCallback((token: string) => {
     setIsLoadingAluno(true);
     setAlunoFromToken(token);
@@ -86,38 +89,14 @@ export const AlunoProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     console.log("Contexto Aluno: Verificando sessão do aluno...");
     setIsLoadingAluno(true);
     const storedToken = localStorage.getItem(ALUNO_TOKEN_KEY);
-    const storedAlunoData = localStorage.getItem(ALUNO_DATA_KEY);
-
     if (storedToken) {
-      try {
-        const decoded = jwtDecode<AlunoLogado>(storedToken);
-        if (decoded.exp && decoded.exp * 1000 < Date.now()) {
-          console.log("Contexto Aluno: Sessão de aluno expirada no localStorage, limpando...");
-          logoutAluno();
-        } else if (storedAlunoData) {
-          const parsedAlunoData: AlunoLogado = JSON.parse(storedAlunoData);
-          if (parsedAlunoData.id && parsedAlunoData.role === 'Aluno') {
-            setAluno(parsedAlunoData);
-            setTokenAluno(storedToken);
-            console.log("Contexto Aluno: Sessão de aluno restaurada do localStorage.");
-          } else {
-            console.warn("Contexto Aluno: Dados de aluno inválidos no localStorage, limpando...");
-            logoutAluno();
-          }
-        } else {
-           console.log("Contexto Aluno: Dados do aluno não encontrados no localStorage, tentando decodificar token armazenado...");
-           setAlunoFromToken(storedToken);
-        }
-      } catch (error) {
-        console.error("Contexto Aluno: Erro ao verificar sessão do aluno no localStorage, limpando:", error);
-        logoutAluno();
-      }
+      // Simplifica a lógica: sempre re-valida o token ao carregar
+      setAlunoFromToken(storedToken);
     } else {
-        console.log("Contexto Aluno: Nenhum token de aluno encontrado no localStorage.");
+      console.log("Contexto Aluno: Nenhum token de aluno encontrado no localStorage.");
     }
     setIsLoadingAluno(false);
-  }, [logoutAluno, setAlunoFromToken]);
-
+  }, [setAlunoFromToken]);
 
   useEffect(() => {
     checkAlunoSession();
@@ -126,20 +105,14 @@ export const AlunoProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === ALUNO_TOKEN_KEY && event.newValue === null) {
-        console.log("Contexto Aluno: Token de aluno removido de outra aba/janela. Deslogando localmente...");
-        setAluno(null);
-        setTokenAluno(null);
-      }
-      if (event.key === ALUNO_DATA_KEY && event.newValue === null) {
-        setAluno(null);
+        logoutAluno();
       }
     };
     window.addEventListener('storage', handleStorageChange);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
-
+  }, [logoutAluno]);
 
   return (
     <AlunoContext.Provider value={{ aluno, tokenAluno, isLoadingAluno, loginAluno, logoutAluno, checkAlunoSession }}>
