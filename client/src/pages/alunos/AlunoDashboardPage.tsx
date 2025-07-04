@@ -1,83 +1,28 @@
 // client/src/pages/alunos/AlunoDashboardPage.tsx
 import React, { useMemo, useState, useEffect } from 'react';
-import { useAluno } from '@/context/AlunoContext';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // <<< ADICIONADO IMPORT
+// ---> CORREÇÃO FINAL DE CAMINHO
+import { useAluno } from '../../context/AlunoContext';
+import { Button } from '../../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../../components/ui/card';
+import { Progress } from '../../components/ui/progress';
+import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
-import { Loader2, ListChecks, Eye, AlertTriangle, CalendarClock, PlayCircle, Zap, CheckCircle2, RotateCcw, Calendar as CalendarIcon, Star as StarIcon } from 'lucide-react';
+import { apiRequest } from '../../lib/queryClient';
+import { Loader2, ListChecks, Eye, AlertTriangle, PlayCircle, Zap, CheckCircle2, RotateCcw, Calendar as CalendarIcon, Star as StarIcon } from 'lucide-react';
 import { Link as WouterLink, useLocation } from 'wouter';
-import { format, parseISO, isValid as isDateValidFn, isSameWeek, nextDay, Day, differenceInDays } from 'date-fns'; // <<< ADICIONADO differenceInDays
+import { format, parseISO, isValid as isDateValidFn, nextDay, Day, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import FrequenciaSemanal from '../../components/alunos/FrequenciaSemanal';
+// ---> FIM DAS CORREÇÕES DE CAMINHO
 
-import FrequenciaSemanal from '@/components/alunos/FrequenciaSemanal';
+// --- Interfaces (sem alterações) ---
+interface ExercicioDetalhePopulado { _id: string; nome: string; grupoMuscular?: string; urlVideo?: string; descricao?: string; categoria?: string; tipo?: string; }
+interface ExercicioEmDiaDeTreinoPopulado { _id: string; exercicioId: ExercicioDetalhePopulado | string; series?: string; repeticoes?: string; carga?: string; descanso?: string; observacoes?: string; ordemNoDia: number; concluido?: boolean; }
+interface DiaDeTreinoPopulado { _id: string; identificadorDia: string; nomeSubFicha?: string; ordemNaRotina: number; exerciciosDoDia: ExercicioEmDiaDeTreinoPopulado[]; dataSugeridaFormatada?: string; concluidoNestaSemana?: boolean; }
+interface RotinaDeTreinoAluno { _id: string; titulo: string; descricao?: string; tipo: "modelo" | "individual"; alunoId?: { _id: string; nome: string; email?: string; } | string | null; criadorId?: { _id: string; nome: string; email?: string; } | string; tipoOrganizacaoRotina: 'diasDaSemana' | 'numerico' | 'livre'; diasDeTreino: DiaDeTreinoPopulado[]; pastaId?: { _id: string; nome: string; } | string | null; statusModelo?: "ativo" | "rascunho" | "arquivado"; ordemNaPasta?: number; dataValidade?: string | null; totalSessoesRotinaPlanejadas?: number | null; sessoesRotinaConcluidas: number; criadoEm: string; atualizadoEm?: string; }
+interface SessaoConcluidaParaFrequencia { _id: string; sessionDate: string | Date; tipoCompromisso?: string; }
 
-// --- Interfaces ---
-interface ExercicioDetalhePopulado {
-  _id: string;
-  nome: string;
-  grupoMuscular?: string;
-  urlVideo?: string;
-  descricao?: string;
-  categoria?: string;
-  tipo?: string;
-}
-interface ExercicioEmDiaDeTreinoPopulado {
-  _id: string;
-  exercicioId: ExercicioDetalhePopulado | string; 
-  series?: string;
-  repeticoes?: string;
-  carga?: string;
-  descanso?: string;
-  observacoes?: string;
-  ordemNoDia: number;
-  concluido?: boolean;
-}
-interface DiaDeTreinoPopulado {
-  _id: string;
-  identificadorDia: string; 
-  nomeSubFicha?: string;    
-  ordemNaRotina: number;
-  exerciciosDoDia: ExercicioEmDiaDeTreinoPopulado[];
-  dataSugeridaFormatada?: string; 
-  concluidoNestaSemana?: boolean;
-}
-interface RotinaDeTreinoAluno {
-  _id: string;
-  titulo: string;
-  descricao?: string;
-  tipo: "modelo" | "individual"; 
-  alunoId?: { _id: string; nome: string; email?: string; } | string | null;
-  criadorId?: { _id: string; nome: string; email?: string; } | string;
-  tipoOrganizacaoRotina: 'diasDaSemana' | 'numerico' | 'livre';
-  diasDeTreino: DiaDeTreinoPopulado[]; 
-  pastaId?: { _id: string; nome: string; } | string | null;
-  statusModelo?: "ativo" | "rascunho" | "arquivado";
-  ordemNaPasta?: number;
-  dataValidade?: string | null; 
-  totalSessoesRotinaPlanejadas?: number | null;
-  sessoesRotinaConcluidas: number;
-  criadoEm: string; 
-  atualizadoEm?: string; 
-}
-interface SessaoConcluidaParaFrequencia {
-  _id: string;
-  sessionDate: string | Date;
-  tipoCompromisso?: string; 
-}
-interface SessaoConcluidaRotina {
-    _id: string;
-    diaDeTreinoId: string | null;
-    concluidaEm: string; 
-}
-
-const weekDayMap: { [key: string]: Day } = {
-    'domingo': 0, 'segunda-feira': 1, 'terca-feira': 2, 'quarta-feira': 3,
-    'quinta-feira': 4, 'sexta-feira': 5, 'sabado': 6
-};
-
+const weekDayMap: { [key: string]: Day } = { 'domingo': 0, 'segunda-feira': 1, 'terca-feira': 2, 'quarta-feira': 3, 'quinta-feira': 4, 'sexta-feira': 5, 'sabado': 6 };
 const getNextDateForWeekday = (weekdayName: string): Date | null => {
     const lowerWeekdayName = weekdayName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace("-feira", "");
     const targetDayIndex = weekDayMap[lowerWeekdayName];
@@ -103,7 +48,7 @@ const AlunoDashboardPage: React.FC = () => {
     queryFn: async () => { 
       if (!aluno?.id) throw new Error("Aluno não autenticado para buscar rotinas.");
       const rotinasDoAluno = await apiRequest<RotinaDeTreinoAluno[]>('GET', '/api/aluno/meus-treinos');
-      return rotinasDoAluno.sort((a, b) => new Date(b.atualizadoEm || b.criadoEm).getTime() - new Date(a.atualizadoEm || a.criadoEm).getTime());
+      return rotinasDoAluno.sort((a: RotinaDeTreinoAluno, b: RotinaDeTreinoAluno) => new Date(b.atualizadoEm || b.criadoEm).getTime() - new Date(a.atualizadoEm || a.criadoEm).getTime());
     },
     enabled: !!aluno && !!tokenAluno,
     staleTime: 1000 * 60 * 5,
@@ -127,17 +72,6 @@ const AlunoDashboardPage: React.FC = () => {
       if (!minhasRotinas || !activeRotinaId) return null;
       return minhasRotinas.find(r => r._id === activeRotinaId) || minhasRotinas[0] || null;
   }, [minhasRotinas, activeRotinaId]);
-
-
-  const { data: sessoesConcluidasDaRotinaAtiva, isLoading: isLoadingSessoesRotina } = useQuery<SessaoConcluidaRotina[], Error>({
-    queryKey: ['sessoesConcluidasRotinaAtiva', aluno?.id, rotinaAtiva?._id],
-    queryFn: async () => {
-        if (!aluno?.id || !rotinaAtiva?._id) throw new Error("Aluno ou rotina ativa não definidos para buscar sessões.");
-        return apiRequest<SessaoConcluidaRotina[]>('GET', `/api/aluno/rotinas/${rotinaAtiva._id}/sessoes-concluidas`);
-    },
-    enabled: !!aluno && !!tokenAluno && !!rotinaAtiva,
-    staleTime: 1000 * 30, 
-  });
   
   const { data: sessoesConcluidasNaSemanaGeral, isLoading: isLoadingFrequencia } = useQuery<SessaoConcluidaParaFrequencia[], Error>({
     queryKey: ['frequenciaSemanalAluno', aluno?.id],
@@ -175,23 +109,13 @@ const AlunoDashboardPage: React.FC = () => {
         })
         .sort((a, b) => a.ordemNaRotina - b.ordemNaRotina);
     
-    const hoje = new Date();
     const diasConcluidosNestaSemanaSet = new Set<string>();
-    if (sessoesConcluidasDaRotinaAtiva) {
-        sessoesConcluidasDaRotinaAtiva.forEach(sessao => {
-            if (sessao.diaDeTreinoId && sessao.concluidaEm) {
-                const dataConclusao = parseISO(sessao.concluidaEm);
-                if (isDateValidFn(dataConclusao) && isSameWeek(dataConclusao, hoje, { weekStartsOn: 1 })) {
-                     diasConcluidosNestaSemanaSet.add(sessao.diaDeTreinoId);
-                }
-            }
-        });
-    }
     const diasDaRotinaParaLogica = diasDaRotinaComData.map(dia => ({ ...dia, concluidoNestaSemana: diasConcluidosNestaSemanaSet.has(dia._id) }));
     
     let alerta: { tipo: 'warning' | 'info'; mensagem: string } | null = null;
     if (rotinaAtiva.dataValidade) {
         const dataValidadeDate = parseISO(rotinaAtiva.dataValidade);
+        const hoje = new Date();
         if (isDateValidFn(dataValidadeDate)) {
             const diasParaExpirar = differenceInDays(dataValidadeDate, hoje);
             if (diasParaExpirar < 0) {
@@ -212,25 +136,12 @@ const AlunoDashboardPage: React.FC = () => {
     if (rotinaAtiva.totalSessoesRotinaPlanejadas && rotinaAtiva.sessoesRotinaConcluidas >= rotinaAtiva.totalSessoesRotinaPlanejadas) {
         return { proximoDiaSugerido: null, diasCompletosDaRotinaComData: diasDaRotinaParaLogica, alertaRotina: alerta }; 
     }
-
-    let ultimoDiaConcluidoDaRotina: DiaDeTreinoPopulado | null = null;
-    if (sessoesConcluidasDaRotinaAtiva && sessoesConcluidasDaRotinaAtiva.length > 0) {
-        const sessoesOrdenadas = [...sessoesConcluidasDaRotinaAtiva].sort((a,b) => new Date(b.concluidaEm).getTime() - new Date(a.concluidaEm).getTime());
-        const ultimoDiaConcluidoId = sessoesOrdenadas[0].diaDeTreinoId;
-        if (ultimoDiaConcluidoId) { ultimoDiaConcluidoDaRotina = diasDaRotinaParaLogica.find(dia => dia._id === ultimoDiaConcluidoId) || null; }
-    }
-
-    let proximoDia: DiaDeTreinoPopulado | null = null;
-    if (!ultimoDiaConcluidoDaRotina) {
-        proximoDia = diasDaRotinaParaLogica[0] || null;
-    } else {
-        const indiceUltimo = ultimoDiaConcluidoDaRotina.ordemNaRotina;
-        const proximoDiaEncontrado = diasDaRotinaParaLogica.find(d => d.ordemNaRotina > indiceUltimo);
-        proximoDia = proximoDiaEncontrado || diasDaRotinaParaLogica[0] || null;
-    }
+    
+    const proximoDia = diasDaRotinaParaLogica[0] || null;
+    
     return { proximoDiaSugerido: proximoDia, diasCompletosDaRotinaComData: diasDaRotinaParaLogica, alertaRotina: alerta };
 
-  }, [rotinaAtiva, sessoesConcluidasDaRotinaAtiva]);
+  }, [rotinaAtiva]);
 
   const handleSetRotinaAtiva = (id: string) => {
     setActiveRotinaId(id);
@@ -240,16 +151,16 @@ const AlunoDashboardPage: React.FC = () => {
   };
 
 
-  if (isLoadingRotinas || isLoadingFrequencia || (!!rotinaAtiva && isLoadingSessoesRotina)) { 
+  if (isLoadingRotinas || isLoadingFrequencia) { 
     return ( <div className="flex h-screen w-full items-center justify-center"> <Loader2 className="h-10 w-10 animate-spin text-primary" /> <span className="ml-3">A carregar seus dados...</span> </div> );
   }
-  if (!aluno && !tokenAluno && !isLoadingRotinas && !isLoadingFrequencia && !(!!rotinaAtiva && isLoadingSessoesRotina)) { 
+  if (!aluno && !tokenAluno && !isLoadingRotinas && !isLoadingFrequencia) { 
       return ( <div className="flex h-screen w-full items-center justify-center"> <p>Sessão inválida ou expirada. Por favor, <WouterLink href="/aluno/login" className="text-primary hover:underline">faça login</WouterLink> novamente.</p> </div> );
   }
   if (errorRotinas) { 
       return ( <div className="container mx-auto p-4 md:p-6 lg:p-8"> <div className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-4 rounded-md flex items-center"> <AlertTriangle className="w-5 h-5 mr-2" /> <span>Erro ao carregar suas rotinas: {errorRotinas.message}</span> </div> </div> );
   }
-
+  
   return (
     <div className="container mx-auto p-4 md:p-6 lg:p-8 space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -391,7 +302,7 @@ const AlunoDashboardPage: React.FC = () => {
             </Card>
         )
       )}
-
+      
       {minhasRotinas && minhasRotinas.length > 1 && ( 
         <Card className="shadow-lg mt-8">
           <CardHeader>
