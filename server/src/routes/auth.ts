@@ -22,7 +22,6 @@ const getExpiresInSeconds = (durationString: string | undefined, defaultDuration
         const durationMs = ms(durationString || defaultDuration);
         return Math.floor(durationMs / 1000);
     } catch (e) {
-        console.warn(`Formato de duração JWT inválido: '${durationString}'. Usando padrão de '${defaultDuration}'.`);
         return Math.floor(ms(defaultDuration) / 1000);
     }
 };
@@ -35,17 +34,29 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         if (!user || !user._id) return res.status(401).json({ message: 'Credenciais inválidas.' });
         const isPasswordValid = await user.comparePassword(password);
         if (!isPasswordValid) return res.status(401).json({ message: 'Credenciais inválidas.' });
+        
         const firstName = user.nome.split(' ')[0] || '';
         const lastName = user.nome.split(' ').slice(1).join(' ') || '';
+
+        // ---> CORREÇÃO LÓGICA: Simplifica a verificação do role
+        let role = 'personal'; // Define 'personal' como padrão
+        if (user.role?.toLowerCase() === 'admin') {
+            role = 'admin'; // Se o role do banco for 'Admin' ou 'admin', padroniza para 'admin'
+        }
+        // ---> FIM DA CORREÇÃO
+
         const tokenPayload = {
             id: user._id.toString(),
             email: user.email,
             firstName,
             lastName,
-            role: user.role || 'personal'
+            role: role // Usa o role padronizado
         };
+
         const expiresIn = getExpiresInSeconds(process.env.JWT_EXPIRES_IN, '1h');
         const token = jwt.sign(tokenPayload, getJwtSecret(), { expiresIn });
+
+        console.log(`✅ Login de ${role} bem-sucedido para: ${user.email}`);
         res.json({ message: 'Login bem-sucedido!', token, user: { ...tokenPayload } });
     } catch (error) {
         next(error);
@@ -61,7 +72,6 @@ router.post('/aluno/login', async (req: Request, res: Response, next: NextFuncti
         const isPasswordValid = await aluno.comparePassword(password);
         if (!isPasswordValid) return res.status(401).json({ message: 'Credenciais inválidas.' });
         
-        // ---> CORREÇÃO: Inclui todos os campos esperados pelo frontend no payload do token.
         const tokenPayload = {
             id: aluno._id.toString(),
             nome: aluno.nome,
@@ -77,7 +87,6 @@ router.post('/aluno/login', async (req: Request, res: Response, next: NextFuncti
         res.json({
             message: 'Login de aluno bem-sucedido!',
             token,
-            // O objeto 'aluno' na resposta agora é exatamente o payload do token
             aluno: tokenPayload
         });
     } catch (error) {

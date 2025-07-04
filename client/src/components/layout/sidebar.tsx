@@ -1,10 +1,11 @@
 // Caminho: ./client/src/components/layout/sidebar.tsx
-import React from 'react';
+// A importação explícita de 'React' foi removida para limpar o aviso do TypeScript.
+
 import { Link, useLocation } from "wouter";
-import { Home, Users, Dumbbell, List, LogOut, UserPlus, UserCog, Mail } from "lucide-react"; // Removidos ícones não usados aqui
-import { useUser, User } from "@/context/UserContext";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Home, Users, Dumbbell, List, LogOut, UserPlus, UserCog, Mail } from "lucide-react";
+import { useUser, User } from "../../context/UserContext";
+import { Button } from "../ui/button";
+import { Avatar, AvatarFallback } from "../ui/avatar";
 
 const DefaultSidebarLinks = [
   { href: "/", label: "Início", icon: Home },
@@ -70,11 +71,8 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
     return currentUser.role;
   }
 
-  // Se não houver Personal/Admin logado, o Header.tsx já decide não renderizar este Sidebar
-  // Portanto, podemos assumir que 'user' existe se este componente for renderizado pelo Header.
-  // No entanto, para segurança em outros usos ou testes, manter uma verificação é bom.
   if (!user) {
-      return null; // Retorna null se não houver usuário (Personal/Admin)
+      return null;
   }
 
   return (
@@ -90,7 +88,6 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
       </div>
 
       <div className="flex-1 py-4 px-3">
-        {/* Informações do Usuário (Personal/Admin) */}
         <div className="mb-6">
           <div className="flex items-center space-x-3 px-3 py-2">
             <Avatar className="h-10 w-10 border-2 border-primary dark:border-sky-500 shrink-0 bg-muted text-primary dark:text-sky-400">
@@ -109,7 +106,6 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           </div>
         </div>
 
-        {/* Links de navegação para Personal/Admin */}
         <nav className="space-y-1">
           {DefaultSidebarLinks.map((link) => (
             <Link key={link.label} href={link.href} onClick={handleLinkClick} className={getLinkClasses(link.href)}>
@@ -119,7 +115,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           ))}
         </nav>
 
-        {user.role === 'Admin' && ( // Apenas se o usuário for Admin
+        {user.role?.toLowerCase() === 'admin' && (
           <>
             <div className="my-3 border-t border-gray-200 dark:border-gray-700"></div>
             <p className="px-3 pt-2 pb-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
@@ -137,7 +133,6 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
         )}
       </div>
 
-      {/* Botão de Sair */}
       <div className="mt-auto p-3 border-t border-gray-200 dark:border-gray-700">
         <Button
           variant="ghost"
@@ -148,6 +143,6 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           Sair
         </Button>
       </div>
-    </aside> // <<< TAG DE FECHAMENTO DO ASIDE CORRIGIDA/CONFIRMADA
+    </aside>
   );
 }

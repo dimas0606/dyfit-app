@@ -1,14 +1,15 @@
 // server/middlewares/authorizeAdmin.ts
-import { Response, NextFunction } from 'express';
-import { AuthenticatedRequest } from './authenticateToken'; // Certifique-se que este tipo existe e define req.user
+import { Request, Response, NextFunction } from 'express';
 
-export function authorizeAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  // Verifica se o usuário está autenticado e se a role é 'Admin'
-  // O campo 'role' deve existir no objeto req.user após o login
-  if (req.user && req.user.role === 'Admin') {
-    next(); // Usuário é Admin, permite o acesso à próxima rota/middleware
+// Não precisamos mais da interface 'AuthenticatedRequest' importada,
+// pois nosso 'index.d.ts' já estende a interface global do Express.
+
+export function authorizeAdmin(req: Request, res: Response, next: NextFunction) {
+  // Padroniza a verificação para 'admin' (minúsculo).
+  if (req.user && req.user.role === 'admin') {
+    return next(); // Usuário é admin, permite o acesso.
   } else {
-    // Usuário não é Admin ou não está autenticado corretamente com a role
-    res.status(403).json({ mensagem: "Acesso negado. Esta funcionalidade é restrita a administradores." });
+    // Se não for admin, retorna erro 403.
+    return res.status(403).json({ mensagem: "Acesso negado. Esta funcionalidade é restrita a administradores." });
   }
 }
