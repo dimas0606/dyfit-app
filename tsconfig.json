@@ -1,3 +1,4 @@
+// client/tsconfig.json
 {
   "compilerOptions": {
     "target": "ES2020",
@@ -5,22 +6,29 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+
+    /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+
+    /* Linting */
     "strict": true,
-    // "noUnusedLocals": true, // A regra que causava os erros de build foi comentada.
+    "noUnusedLocals": false, // Mantém desativado para evitar erros de build por variáveis não usadas
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["node", "vite/client"],
+    
+    // ---> CORREÇÃO: Adiciona os caminhos relativos ao baseUrl do cliente
     "baseUrl": ".",
     "paths": {
-      "@/*": ["client/src/*"],
-      "@shared/*": ["shared/*"]
+      "@/*": ["./src/*"],
+      // Esta linha é crucial: diz que @shared/ é encontrado voltando um nível e entrando em /shared
+      "@shared/*": ["../shared/*"] 
     }
   },
-  "include": ["server", "client", "shared"]
+  "include": ["src"], // O projeto do cliente só precisa incluir a pasta 'src' dele
+  "references": [{ "path": "./tsconfig.node.json" }] // Mantém a referência ao tsconfig do Node/Vite
 }
