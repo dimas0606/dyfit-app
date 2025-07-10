@@ -1,8 +1,8 @@
-// client/src/pages/admin/ListarPersonaisPage.tsx - SOLUÇÃO FINAL COM POPOVER
+// client/src/pages/admin/ListarPersonaisPage.tsx
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '../../lib/queryClient';
-import { Button } from '../../components/ui/button';
+import { apiRequest } from '@/lib/queryClient';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -10,23 +10,20 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../../components/ui/table";
-// =======================================================
-// --- MUDANÇA: IMPORTANDO POPOVER ---
+} from "@/components/ui/table";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "../../components/ui/popover";
-// =======================================================
+} from "@/components/ui/popover";
 import { MoreHorizontal, Trash2, Edit, Eye, Loader2, ShieldCheck, UserCog, UserPlus } from 'lucide-react';
-import { Badge } from '../../components/ui/badge';
-import { useToast } from '../../hooks/use-toast';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../../components/ui/alert-dialog';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import ErrorMessage from '../../components/ErrorMessage';
-import { Link } from 'wouter';
-import VisualizarPersonalModal from '../../components/dialogs/admin/VisualizarPersonalModal';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import LoadingSpinner from '@/components/LoadingSpinner';
+import ErrorMessage from '@/components/ErrorMessage';
+import { Link, useLocation } from 'wouter'; // Importando useLocation
+import VisualizarPersonalModal from '@/components/dialogs/admin/VisualizarPersonalModal';
 
 export interface PersonalListadoItem {
   _id: string;
@@ -45,6 +42,7 @@ export interface PersonalDetalhes extends PersonalListadoItem {
 }
 
 export default function ListarPersonaisPage() {
+  const [, setLocation] = useLocation(); // Pegando a função para navegar
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [personalParaExcluir, setPersonalParaExcluir] = useState<PersonalListadoItem | null>(null);
@@ -54,7 +52,6 @@ export default function ListarPersonaisPage() {
   const [personalParaVisualizar, setPersonalParaVisualizar] = useState<PersonalDetalhes | null>(null);
   const [isLoadingPersonalDetails, setIsLoadingPersonalDetails] = useState(false);
 
-  // Mantemos a configuração que impede re-fetchs desnecessários
   const { data: personais, isLoading, error: queryError } = useQuery<PersonalListadoItem[], Error>({
     queryKey: ['adminPersonalTrainersList'],
     queryFn: () => apiRequest<PersonalListadoItem[]>("GET", "/api/admin/personal-trainers"),
@@ -151,8 +148,6 @@ export default function ListarPersonaisPage() {
                     {new Date(personal.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                   </TableCell>
                   <TableCell className="text-right">
-                    {/* ======================================================= */}
-                    {/* --- SOLUÇÃO: SUBSTITUINDO DROPDOWNMENU POR POPOVER --- */}
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
@@ -165,9 +160,12 @@ export default function ListarPersonaisPage() {
                             <Button variant="ghost" className="w-full justify-start text-sm" onClick={() => handleVisualizarClick(personal._id)}>
                                 <Eye className="mr-2 h-4 w-4" /> Visualizar
                             </Button>
-                            <Button variant="ghost" className="w-full justify-start text-sm" onClick={() => alert(`Funcionalidade Editar para: ${personal.nome} (não implementada)`)}>
+                            {/* ======================================================= */}
+                            {/* --- BOTÃO EDITAR AGORA NAVEGA PARA A NOVA ROTA --- */}
+                            <Button variant="ghost" className="w-full justify-start text-sm" onClick={() => setLocation(`/admin/personais/editar/${personal._id}`)}>
                                 <Edit className="mr-2 h-4 w-4" /> Editar
                             </Button>
+                            {/* ======================================================= */}
                             <div className="border-t my-1"></div>
                             <Button variant="ghost" className="w-full justify-start text-sm text-red-600 hover:text-red-700" onClick={() => handleExcluirClick(personal)} disabled={deletePersonalMutation.isPending && personalParaExcluir?._id === personal._id}>
                                 {deletePersonalMutation.isPending && personalParaExcluir?._id === personal._id ? (
@@ -180,7 +178,6 @@ export default function ListarPersonaisPage() {
                         </div>
                       </PopoverContent>
                     </Popover>
-                    {/* ======================================================= */}
                   </TableCell>
                 </TableRow>
               ))}
