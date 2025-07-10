@@ -1,5 +1,5 @@
 // client/src/components/dialogs/admin/VisualizarPersonalModal.tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from '@/components/ui/badge';
 import { Loader2, UserCircle, Mail, ShieldCheck, CalendarDays, Link2, Users, BarChartHorizontalBig, Info } from 'lucide-react';
-// ***** CAMINHO DO IMPORT CORRIGIDO *****
-import { PersonalDetalhes } from '@shared/types/personal'; 
+// Importação de @shared pode dar problema se os paths não estiverem 100% corretos,
+// então vamos definir o tipo aqui para garantir que não haja erros de compilação.
+export interface PersonalDetalhes {
+    _id: string;
+    nome: string;
+    email: string;
+    role: string;
+    createdAt: string;
+    updatedAt: string;
+    tokenCadastroAluno?: string;
+    statusAssinatura?: string;
+    limiteAlunos?: number;
+    dataFimAssinatura?: string;
+    planoId?: string;
+}
 
 interface VisualizarPersonalModalProps {
   isOpen: boolean;
@@ -28,7 +41,6 @@ const formatDate = (dateString?: Date | string): string => {
     if (isNaN(date.getTime())) {
         const parts = String(dateString).split('/');
         if (parts.length === 3) {
-            // Tenta DD/MM/YYYY
             const parsedDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
             if (!isNaN(parsedDate.getTime())) {
                 return parsedDate.toLocaleDateString('pt-BR', {
@@ -36,13 +48,13 @@ const formatDate = (dateString?: Date | string): string => {
                 });
             }
         }
-        return 'Data inválida'; // Retorna se não conseguir parsear
+        return 'Data inválida';
     }
     return date.toLocaleDateString('pt-BR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
     });
   } catch (e) {
-    return String(dateString); // Fallback para a string original em caso de erro inesperado
+    return String(dateString);
   }
 };
 
@@ -59,6 +71,21 @@ const InfoItem: React.FC<{ label: string; value?: string | number | React.ReactN
 );
 
 export default function VisualizarPersonalModal({ isOpen, onClose, personal, isLoading }: VisualizarPersonalModalProps) {
+  // =================== CÓDIGO DE DIAGNÓSTICO ===================
+  useEffect(() => {
+    if (isOpen) {
+        console.log('%c[MODAL COMPONENT] Modal FOI MONTADO/ABERTO.', 'color: green; font-weight: bold;');
+    }
+    // A função de limpeza do useEffect será chamada quando o componente for desmontado
+    // ou antes do próximo efeito ser executado.
+    return () => {
+        if (isOpen) {
+            console.log('%c[MODAL COMPONENT] Limpeza do efeito do modal. Próximo render ou desmontagem.', 'color: yellow;');
+        }
+    };
+  }, [isOpen]);
+  // =============================================================
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg md:max-w-xl">
