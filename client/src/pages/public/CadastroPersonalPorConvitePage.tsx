@@ -1,6 +1,6 @@
 // Localização: client/src/pages/public/CadastroPersonalPorConvitePage.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'wouter'; // Redirect não é mais usado diretamente aqui
+import { useParams } from 'wouter';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +36,6 @@ const CadastroPersonalPorConvitePage: React.FC = () => {
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
   const [isLoadingValidation, setIsLoadingValidation] = useState<boolean>(true);
   const [validationError, setValidationError] = useState<string | null>(null);
-  // NOVO ESTADO para controlar se o email foi pré-preenchido
   const [emailWasPrefilled, setEmailWasPrefilled] = useState<boolean>(false); 
   const [formData, setFormData] = useState<RegistroFormData>({
     nome: '',
@@ -58,13 +57,16 @@ const CadastroPersonalPorConvitePage: React.FC = () => {
     setIsLoadingValidation(true);
     setValidationError(null);
     try {
-      const response = await apiRequest<ValidacaoTokenResponse>('GET', `/api/convites/validar/${tokenDeConvite}`);
+      // =======================================================
+      // --- CORREÇÃO: USANDO A ROTA PÚBLICA ---
+      const response = await apiRequest<ValidacaoTokenResponse>('GET', `/api/public/convites/validar/${tokenDeConvite}`);
+      // =======================================================
       setIsValidToken(true);
       if (response.emailConvidado) {
         setFormData(prev => ({ ...prev, email: response.emailConvidado! }));
-        setEmailWasPrefilled(true); // <<< Define que o email foi pré-preenchido
+        setEmailWasPrefilled(true);
       } else {
-        setEmailWasPrefilled(false); // <<< Garante que está falso se não veio email do token
+        setEmailWasPrefilled(false);
       }
       toast({
         title: "Convite Válido!",
@@ -74,7 +76,7 @@ const CadastroPersonalPorConvitePage: React.FC = () => {
       setIsValidToken(false);
       const errMsg = error.message || "Erro ao validar o convite. Verifique o link ou contate o administrador.";
       setValidationError(errMsg);
-      setEmailWasPrefilled(false); // <<< Reseta em caso de erro
+      setEmailWasPrefilled(false);
       toast({
         title: "Erro na Validação do Convite",
         description: errMsg,
@@ -123,7 +125,10 @@ const CadastroPersonalPorConvitePage: React.FC = () => {
         email: formData.email,
         password: formData.password,
       };
-      const response = await apiRequest<{ mensagem: string }>('POST', `/api/convites/registrar/${tokenDeConvite}`, payload);
+      // =======================================================
+      // --- CORREÇÃO: USANDO A ROTA PÚBLICA ---
+      const response = await apiRequest<{ mensagem: string }>('POST', `/api/public/convites/registrar/${tokenDeConvite}`, payload);
+      // =======================================================
       toast({
         title: "Cadastro Realizado com Sucesso!",
         description: response.mensagem || "Você já pode fazer login.",
@@ -223,10 +228,10 @@ const CadastroPersonalPorConvitePage: React.FC = () => {
                 value={formData.email}
                 onChange={handleChange}
                 required
-                disabled={emailWasPrefilled} // <<< CORRIGIDO: Usa o novo estado
+                disabled={emailWasPrefilled}
                 className="bg-input/50 disabled:opacity-75"
               />
-               {emailWasPrefilled && ( // Mostra a mensagem se o email foi pré-preenchido
+               {emailWasPrefilled && (
                 <p className="text-xs text-muted-foreground">Email pré-preenchido do convite.</p>
               )}
             </div>
