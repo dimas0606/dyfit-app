@@ -25,14 +25,11 @@ const TreinosPage = lazy(() => import("@/pages/treinos/index"));
 const ProfileEditPage = lazy(() => import('@/pages/perfil/editar'));
 
 // --- Páginas de Admin ---
+const AdminDashboardPage = lazy(() => import("@/pages/admin/AdminDashboardPage"));
 const CriarPersonalPage = lazy(() => import("@/pages/admin/CriarPersonalPage"));
 const ListarPersonaisPage = lazy(() => import("@/pages/admin/ListarPersonaisPage"));
 const GerenciarConvitesPage = lazy(() => import("@/pages/admin/GerenciarConvitesPage"));
-// =======================================================
-// --- CORREÇÃO DO ERRO DE BUILD ---
-// Adicionando a extensão .tsx na importação.
 const EditarPersonalPage = lazy(() => import("@/pages/admin/EditarPersonalPage.tsx"));
-// =======================================================
 
 // --- Páginas Públicas ---
 const LoginPage = lazy(() => import("@/pages/login"));
@@ -52,36 +49,24 @@ interface CustomRouteProps extends Omit<RouteProps, 'component' | 'children'> {
 
 const ProtectedRoute: React.FC<CustomRouteProps> = ({ component: Component, children, ...rest }) => {
   const { user, isLoading: isUserContextLoading } = useContext(UserContext);
-  if (isUserContextLoading) {
-    return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
-  }
-  if (!user) {
-    return <Redirect to="/login" />;
-  }
+  if (isUserContextLoading) return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
+  if (!user) return <Redirect to="/login" />;
   if (Component) return <Route {...rest} component={Component} />;
   return <Route {...rest}>{children}</Route>;
 };
 
 const AdminRoute: React.FC<CustomRouteProps> = ({ component: Component, children, ...rest }) => {
   const { user, isLoading: isUserContextLoading } = useContext(UserContext);
-  if (isUserContextLoading) {
-    return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
-  }
-  if (!user || user.role?.toLowerCase() !== 'admin') {
-    return <Redirect to="/login" />;
-  }
+  if (isUserContextLoading) return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
+  if (!user || user.role?.toLowerCase() !== 'admin') return <Redirect to="/login" />;
   if (Component) return <Route {...rest} component={Component} />;
   return <Route {...rest}>{children}</Route>;
 };
 
 const AlunoProtectedRoute: React.FC<CustomRouteProps> = ({ component: Component, children, ...rest }) => {
   const { aluno, isLoadingAluno } = useAluno();
-  if (isLoadingAluno) {
-    return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /> Carregando dados do aluno...</div>;
-  }
-  if (!aluno) {
-    return <Redirect to="/aluno/login" />;
-  }
+  if (isLoadingAluno) return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /> Carregando...</div>;
+  if (!aluno) return <Redirect to="/aluno/login" />;
   if (Component) return <Route {...rest} component={Component} />;
   return <Route {...rest}>{children}</Route>;
 };
@@ -112,13 +97,13 @@ function AdminApp() {
     <MainLayout>
       <Suspense fallback={<div className="flex h-full flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
         <Switch>
+          <AdminRoute path="/" component={AdminDashboardPage} />
+          <AdminRoute path="/exercises" component={ExercisesIndex} />
           <AdminRoute path="/admin/criar-personal" component={CriarPersonalPage} />
           <AdminRoute path="/admin/gerenciar-personais" component={ListarPersonaisPage} />
           <AdminRoute path="/admin/personais/editar/:id" component={EditarPersonalPage} />
           <AdminRoute path="/admin/convites" component={GerenciarConvitesPage} />
-          <Route>
-            <Redirect to="/admin/gerenciar-personais" />
-          </Route>
+          <Route><Redirect to="/" /></Route>
         </Switch>
       </Suspense>
     </MainLayout>
@@ -148,9 +133,7 @@ function PublicRoutes() {
         <Route path="/aluno/login" component={AlunoLoginPage} />
         <Route path="/cadastrar-personal/convite/:tokenDeConvite" component={CadastroPersonalPorConvitePage} />
         <Route path="/convite-aluno/:tokenPersonal" component={CadastroAlunoPorConvitePersonalPage} />
-        <Route>
-          <Redirect to="/login" />
-        </Route>
+        <Route><Redirect to="/login" /></Route>
       </Switch>
     </Suspense>
   );
@@ -168,7 +151,7 @@ function AppContent() {
   if (user) { 
     const role = user.role?.toLowerCase();
     if (location === "/login" || location === "/aluno/login") {
-        return <Redirect to={role === 'admin' ? '/admin/gerenciar-personais' : '/'} />;
+        return <Redirect to="/" />;
     }
     if (role === 'admin') return <AdminApp />;
     if (role === 'personal') return <PersonalApp />;
