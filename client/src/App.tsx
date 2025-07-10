@@ -5,40 +5,41 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { Loader2 } from "lucide-react";
 
-// ---> CORREÇÃO DE CAMINHOS DE IMPORTAÇÃO (de '@/' para relativos)
-import { Toaster } from "./components/ui/toaster";
-import { TooltipProvider } from "./components/ui/tooltip";
-import MainLayout from "./components/layout/main-layout";
-import Dashboard from "./pages/dashboard";
-import StudentsIndex from "./pages/alunos/index";
-import NewStudent from "./pages/alunos/new";
-import StudentDetail from "./pages/alunos/[id]";
-import EditStudentPage from "./pages/alunos/edit";
-import ExercisesIndex from "./pages/exercises/index";
-import SessionsPage from "./pages/sessoes/index";
-import TreinosPage from "./pages/treinos/index";
-const ProfileEditPage = lazy(() => import('./pages/perfil/editar'));
-import NotFound from "./pages/not-found";
-import LoginPage from "./pages/login";
-import { UserProvider, UserContext } from "./context/UserContext";
-import { AlunoProvider, useAluno } from "./context/AlunoContext";
-import { queryClient } from "./lib/queryClient";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import MainLayout from "@/components/layout/main-layout";
+import { UserProvider, UserContext } from "@/context/UserContext";
+import { AlunoProvider, useAluno } from "@/context/AlunoContext";
+import { queryClient } from "@/lib/queryClient";
+import NotFound from "@/pages/not-found";
 
-// Páginas de Admin
-const CriarPersonalPage = lazy(() => import("./pages/admin/CriarPersonalPage"));
-const ListarPersonaisPage = lazy(() => import("./pages/admin/ListarPersonaisPage"));
-const GerenciarConvitesPage = lazy(() => import("./pages/admin/GerenciarConvitesPage"));
+// --- Páginas do Personal ---
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const StudentsIndex = lazy(() => import("@/pages/alunos/index"));
+const NewStudent = lazy(() => import("@/pages/alunos/new"));
+const StudentDetail = lazy(() => import("@/pages/alunos/[id]"));
+const EditStudentPage = lazy(() => import("@/pages/alunos/edit"));
+const ExercisesIndex = lazy(() => import("@/pages/exercises/index"));
+const SessionsPage = lazy(() => import("@/pages/sessoes/index"));
+const TreinosPage = lazy(() => import("@/pages/treinos/index"));
+const ProfileEditPage = lazy(() => import('@/pages/perfil/editar'));
 
-// Páginas Públicas
-const CadastroPersonalPorConvitePage = lazy(() => import("./pages/public/CadastroPersonalPorConvitePage"));
-const CadastroAlunoPorConvitePersonalPage = lazy(() => import("./pages/public/CadastroAlunoPorConvitePersonalPage"));
-const AlunoLoginPage = lazy(() => import("./pages/public/AlunoLoginPage"));
+// --- Páginas de Admin ---
+const CriarPersonalPage = lazy(() => import("@/pages/admin/CriarPersonalPage"));
+const ListarPersonaisPage = lazy(() => import("@/pages/admin/ListarPersonaisPage"));
+const GerenciarConvitesPage = lazy(() => import("@/pages/admin/GerenciarConvitesPage"));
+const EditarPersonalPage = lazy(() => import("@/pages/admin/EditarPersonalPage")); // Importando a nova página
 
-// Páginas do Aluno
-const AlunoDashboardPage = lazy(() => import('./pages/alunos/AlunoDashboardPage'));
-const AlunoFichaDetalhePage = lazy(() => import('./pages/alunos/AlunoFichaDetalhePage'));
-const AlunoHistoricoPage = lazy(() => import('./pages/alunos/AlunoHistoricoPage'));
-// ---> FIM DA CORREÇÃO DE CAMINHOS
+// --- Páginas Públicas ---
+const LoginPage = lazy(() => import("@/pages/login"));
+const CadastroPersonalPorConvitePage = lazy(() => import("@/pages/public/CadastroPersonalPorConvitePage"));
+const CadastroAlunoPorConvitePersonalPage = lazy(() => import("@/pages/public/CadastroAlunoPorConvitePersonalPage"));
+const AlunoLoginPage = lazy(() => import("@/pages/public/AlunoLoginPage"));
+
+// --- Páginas do Aluno ---
+const AlunoDashboardPage = lazy(() => import('@/pages/alunos/AlunoDashboardPage'));
+const AlunoFichaDetalhePage = lazy(() => import('@/pages/alunos/AlunoFichaDetalhePage'));
+const AlunoHistoricoPage = lazy(() => import('@/pages/alunos/AlunoHistoricoPage'));
 
 interface CustomRouteProps extends Omit<RouteProps, 'component' | 'children'> {
   component?: React.ComponentType<any>;
@@ -62,12 +63,8 @@ const AdminRoute: React.FC<CustomRouteProps> = ({ component: Component, children
   if (isUserContextLoading) {
     return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   }
-  if (!user) {
+  if (!user || user.role?.toLowerCase() !== 'admin') {
     return <Redirect to="/login" />;
-  }
-  // ---> CORREÇÃO LÓGICA: Verifica o role em minúsculo
-  if (user.role?.toLowerCase() !== 'admin') {
-    return <Redirect to="/" />;
   }
   if (Component) return <Route {...rest} component={Component} />;
   return <Route {...rest}>{children}</Route>;
@@ -85,48 +82,49 @@ const AlunoProtectedRoute: React.FC<CustomRouteProps> = ({ component: Component,
   return <Route {...rest}>{children}</Route>;
 };
 
+function PersonalApp() {
+  return (
+    <MainLayout>
+      <Suspense fallback={<div className="flex h-full flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+        <Switch>
+          <ProtectedRoute path="/" component={Dashboard} />
+          <ProtectedRoute path="/alunos" component={StudentsIndex} />
+          <ProtectedRoute path="/alunos/novo" component={NewStudent} />
+          <ProtectedRoute path="/alunos/:id">{(params: Params) => <StudentDetail id={params.id} />}</ProtectedRoute>
+          <ProtectedRoute path="/alunos/editar/:id">{(params: Params) => <EditStudentPage id={params.id} />}</ProtectedRoute>
+          <ProtectedRoute path="/treinos" component={TreinosPage} />
+          <ProtectedRoute path="/exercises" component={ExercisesIndex} />
+          <ProtectedRoute path="/sessoes" component={SessionsPage} />
+          <ProtectedRoute path="/perfil/editar" component={ProfileEditPage} />
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
+    </MainLayout>
+  );
+}
 
-function AppContent() {
-  const { user } = useContext(UserContext);
-  const { aluno } = useAluno();
-  const [location] = useLocation();
+function AdminApp() {
+  return (
+    <MainLayout>
+      <Suspense fallback={<div className="flex h-full flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+        <Switch>
+          <AdminRoute path="/admin/criar-personal" component={CriarPersonalPage} />
+          <AdminRoute path="/admin/gerenciar-personais" component={ListarPersonaisPage} />
+          {/* ======================================================= */}
+          {/* --- NOVA ROTA DE EDIÇÃO REGISTRADA --- */}
+          <AdminRoute path="/admin/personais/editar/:id" component={EditarPersonalPage} />
+          {/* ======================================================= */}
+          <AdminRoute path="/admin/convites" component={GerenciarConvitesPage} />
+          <Route>
+            <Redirect to="/admin/gerenciar-personais" />
+          </Route>
+        </Switch>
+      </Suspense>
+    </MainLayout>
+  );
+}
 
-  const isPublicConviteRoute = location.startsWith("/cadastrar-personal/convite/") || location.startsWith("/convite-aluno/");
-  
-  if (user) { 
-    if (location === "/login" || location === "/aluno/login" || isPublicConviteRoute) {
-      return <Redirect to="/" />;
-    }
-
-    return (
-      <MainLayout>
-        <Suspense fallback={<div className="flex h-full flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
-          <Switch>
-            <ProtectedRoute path="/" component={Dashboard} />
-            <ProtectedRoute path="/alunos" component={StudentsIndex} />
-            <ProtectedRoute path="/alunos/novo" component={NewStudent} />
-            <ProtectedRoute path="/alunos/:id">{(params: Params) => <StudentDetail id={params.id} />}</ProtectedRoute>
-            <ProtectedRoute path="/alunos/editar/:id">{(params: Params) => <EditStudentPage id={params.id} />}</ProtectedRoute>
-            <ProtectedRoute path="/treinos" component={TreinosPage} />
-            <ProtectedRoute path="/exercises" component={ExercisesIndex} />
-            <ProtectedRoute path="/sessoes" component={SessionsPage} />
-            <ProtectedRoute path="/perfil/editar" component={ProfileEditPage} />
-
-            {/* Rotas de Admin agora funcionarão corretamente */}
-            <AdminRoute path="/admin/criar-personal" component={CriarPersonalPage} />
-            <AdminRoute path="/admin/gerenciar-personais" component={ListarPersonaisPage} />
-            <AdminRoute path="/admin/convites" component={GerenciarConvitesPage} />
-
-            <Route component={NotFound} />
-          </Switch>
-        </Suspense>
-      </MainLayout>
-    );
-  } else if (aluno) {
-     if (location === "/aluno/login" || location === "/login" || isPublicConviteRoute) {
-        return <Redirect to="/aluno/dashboard" />;
-     }
-
+function AlunoApp() {
     return (
       <MainLayout>
         <Suspense fallback={<div className="flex h-full flex-1 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
@@ -139,22 +137,51 @@ function AppContent() {
         </Suspense>
       </MainLayout>
     );
-  } else {
-    // Rotas Públicas
-    return (
-      <Suspense fallback={<div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>}>
-        <Switch>
-          <Route path="/login" component={LoginPage} />
-          <Route path="/cadastrar-personal/convite/:tokenDeConvite" component={CadastroPersonalPorConvitePage} />
-          <Route path="/convite-aluno/:tokenPersonal" component={CadastroAlunoPorConvitePersonalPage} />
-          <Route path="/aluno/login" component={AlunoLoginPage} />
-          <Route>
-            <Redirect to="/login" />
-          </Route>
-        </Switch>
-      </Suspense>
-    );
+}
+
+function PublicRoutes() {
+  return (
+    <Suspense fallback={<div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>}>
+      <Switch>
+        <Route path="/login" component={LoginPage} />
+        <Route path="/aluno/login" component={AlunoLoginPage} />
+        <Route path="/cadastrar-personal/convite/:tokenDeConvite" component={CadastroPersonalPorConvitePage} />
+        <Route path="/convite-aluno/:tokenPersonal" component={CadastroAlunoPorConvitePersonalPage} />
+        <Route>
+          <Redirect to="/login" />
+        </Route>
+      </Switch>
+    </Suspense>
+  );
+}
+
+function AppContent() {
+  const { user, isLoading: isUserLoading } = useContext(UserContext);
+  const { aluno, isLoadingAluno } = useAluno();
+  const [location] = useLocation();
+
+  if (isUserLoading || isLoadingAluno) {
+    return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-10 w-10 animate-spin text-primary" /></div>;
   }
+  
+  if (user) { 
+    const role = user.role?.toLowerCase();
+    if (location === "/login" || location === "/aluno/login") {
+        return <Redirect to={role === 'admin' ? '/admin/gerenciar-personais' : '/'} />;
+    }
+    if (role === 'admin') return <AdminApp />;
+    if (role === 'personal') return <PersonalApp />;
+    return <Redirect to="/login" />;
+  } 
+  
+  if (aluno) {
+    if (location === "/login" || location === "/aluno/login") {
+        return <Redirect to="/aluno/dashboard" />;
+    }
+    return <AlunoApp />;
+  } 
+  
+  return <PublicRoutes />;
 }
 
 function App() {

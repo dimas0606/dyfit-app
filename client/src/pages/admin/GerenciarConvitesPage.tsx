@@ -37,7 +37,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"; // Importar Tooltip
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from '@/lib/queryClient';
 import { Copy, Check, Trash2, RefreshCw, Loader2 } from 'lucide-react';
@@ -89,7 +89,6 @@ const GerenciarConvitesPage: React.FC = () => {
   const [conviteParaRevogar, setConviteParaRevogar] = useState<ConviteDetalhes | null>(null);
 
   const { toast } = useToast();
-  // Acessando variáveis de ambiente do Vite
   const frontendBaseUrl = import.meta.env.VITE_APP_BASE_URL || window.location.origin;
 
   const fetchConvites = useCallback(async () => {
@@ -165,9 +164,12 @@ const GerenciarConvitesPage: React.FC = () => {
           toast({ description: "Link copiado para a área de transferência!" });
           setTimeout(() => setIsCopiedForm(false), 2000);
         })
-        .catch(err => {
+        // =======================================================
+        // --- AVISO CORRIGIDO: Variável 'err' removida ---
+        .catch(() => {
           toast({ description: "Erro ao copiar o link.", variant: "destructive" });
         });
+        // =======================================================
     }
   };
 
