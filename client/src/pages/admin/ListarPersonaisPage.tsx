@@ -1,4 +1,4 @@
-// client/src/pages/admin/ListarPersonaisPage.tsx
+// client/src/pages/admin/ListarPersonaisPage.tsx - SOLUÇÃO FINAL COM POPOVER
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
@@ -11,26 +11,23 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
+// =======================================================
+// --- MUDANÇA: IMPORTANDO POPOVER ---
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../components/ui/popover";
+// =======================================================
 import { MoreHorizontal, Trash2, Edit, Eye, Loader2, ShieldCheck, UserCog, UserPlus } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import { useToast } from '../../hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../../components/ui/alert-dialog';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorMessage from '../../components/ErrorMessage';
-import { Link } from 'wouter'; // Renomeei de volta para Link
+import { Link } from 'wouter';
 import VisualizarPersonalModal from '../../components/dialogs/admin/VisualizarPersonalModal';
 
-// ---> CORREÇÃO FINAL E GARANTIDA:
-// Removida a importação da pasta 'shared' e as interfaces foram definidas diretamente aqui.
-// Isso elimina o problema de configuração do tsconfig.
 export interface PersonalListadoItem {
   _id: string;
   nome: string;
@@ -46,7 +43,6 @@ export interface PersonalDetalhes extends PersonalListadoItem {
   dataFimAssinatura?: string;
   updatedAt: string;
 }
-// ---> FIM DA CORREÇÃO
 
 export default function ListarPersonaisPage() {
   const queryClient = useQueryClient();
@@ -58,17 +54,18 @@ export default function ListarPersonaisPage() {
   const [personalParaVisualizar, setPersonalParaVisualizar] = useState<PersonalDetalhes | null>(null);
   const [isLoadingPersonalDetails, setIsLoadingPersonalDetails] = useState(false);
 
+  // Mantemos a configuração que impede re-fetchs desnecessários
   const { data: personais, isLoading, error: queryError } = useQuery<PersonalListadoItem[], Error>({
     queryKey: ['adminPersonalTrainersList'],
     queryFn: () => apiRequest<PersonalListadoItem[]>("GET", "/api/admin/personal-trainers"),
-    retry: 1,
-    refetchOnWindowFocus: false, 
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 
   const deletePersonalMutation = useMutation<any, Error, string>({
     mutationFn: (personalId: string) => apiRequest("DELETE", `/api/admin/personal-trainers/${personalId}`),
     onSuccess: (data) => {
-      toast({ title: "Sucesso!", description: data.mensagem || "Personal trainer excluído." });
+      toast({ title: "Sucesso!", description: data.message || "Personal trainer excluído." });
       queryClient.invalidateQueries({ queryKey: ['adminPersonalTrainersList'] });
     },
     onError: (err) => {
@@ -154,36 +151,36 @@ export default function ListarPersonaisPage() {
                     {new Date(personal.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                   </TableCell>
                   <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
+                    {/* ======================================================= */}
+                    {/* --- SOLUÇÃO: SUBSTITUINDO DROPDOWNMENU POR POPOVER --- */}
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
                           <span className="sr-only">Abrir menu</span>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleVisualizarClick(personal._id)}>
-                          <Eye className="mr-2 h-4 w-4" /> Visualizar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => alert(`Funcionalidade Editar para: ${personal.nome} (não implementada)`)} >
-                           <Edit className="mr-2 h-4 w-4" /> Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleExcluirClick(personal)}
-                          className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:text-red-500 dark:focus:text-red-400 dark:focus:bg-red-900/50"
-                          disabled={deletePersonalMutation.isPending && personalParaExcluir?._id === personal._id}
-                        >
-                          {deletePersonalMutation.isPending && personalParaExcluir?._id === personal._id ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="mr-2 h-4 w-4" />
-                          )}
-                          Excluir
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-40 p-1">
+                        <div className="flex flex-col space-y-1">
+                            <Button variant="ghost" className="w-full justify-start text-sm" onClick={() => handleVisualizarClick(personal._id)}>
+                                <Eye className="mr-2 h-4 w-4" /> Visualizar
+                            </Button>
+                            <Button variant="ghost" className="w-full justify-start text-sm" onClick={() => alert(`Funcionalidade Editar para: ${personal.nome} (não implementada)`)}>
+                                <Edit className="mr-2 h-4 w-4" /> Editar
+                            </Button>
+                            <div className="border-t my-1"></div>
+                            <Button variant="ghost" className="w-full justify-start text-sm text-red-600 hover:text-red-700" onClick={() => handleExcluirClick(personal)} disabled={deletePersonalMutation.isPending && personalParaExcluir?._id === personal._id}>
+                                {deletePersonalMutation.isPending && personalParaExcluir?._id === personal._id ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                )}
+                                Excluir
+                            </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    {/* ======================================================= */}
                   </TableCell>
                 </TableRow>
               ))}
