@@ -28,7 +28,11 @@ const ProfileEditPage = lazy(() => import('@/pages/perfil/editar'));
 const CriarPersonalPage = lazy(() => import("@/pages/admin/CriarPersonalPage"));
 const ListarPersonaisPage = lazy(() => import("@/pages/admin/ListarPersonaisPage"));
 const GerenciarConvitesPage = lazy(() => import("@/pages/admin/GerenciarConvitesPage"));
-const EditarPersonalPage = lazy(() => import("@/pages/admin/EditarPersonalPage")); // Importando a nova página
+// =======================================================
+// --- CORREÇÃO DO ERRO DE BUILD ---
+// Adicionando a extensão .tsx na importação.
+const EditarPersonalPage = lazy(() => import("@/pages/admin/EditarPersonalPage.tsx"));
+// =======================================================
 
 // --- Páginas Públicas ---
 const LoginPage = lazy(() => import("@/pages/login"));
@@ -110,10 +114,7 @@ function AdminApp() {
         <Switch>
           <AdminRoute path="/admin/criar-personal" component={CriarPersonalPage} />
           <AdminRoute path="/admin/gerenciar-personais" component={ListarPersonaisPage} />
-          {/* ======================================================= */}
-          {/* --- NOVA ROTA DE EDIÇÃO REGISTRADA --- */}
           <AdminRoute path="/admin/personais/editar/:id" component={EditarPersonalPage} />
-          {/* ======================================================= */}
           <AdminRoute path="/admin/convites" component={GerenciarConvitesPage} />
           <Route>
             <Redirect to="/admin/gerenciar-personais" />
