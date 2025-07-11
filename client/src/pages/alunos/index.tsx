@@ -1,9 +1,7 @@
 // client/src/pages/alunos/index.tsx
-// ATUALIZADO: Adicionada invalidação da query ["/api/alunos"] no onSuccess da exclusão de aluno
-
-import React, { useState, useEffect } from "react"; // Adicionado useEffect
+import { useState } from "react"; // 'React' foi removido
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation, Link } from "wouter";
+import { Link } from "wouter";
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,32 +9,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Pencil, Plus, Search, Trash, UserX } from "lucide-react"; // Adicionado UserX para ícone de exclusão
-// import { queryClient as localQueryClient, apiRequest } from "@/lib/queryClient"; // Removido localQueryClient se estiver usando o hook
-import { fetchWithAuth } from "@/lib/apiClient"; // Usar fetchWithAuth consistentemente
+import { Eye, Pencil, Plus, Search, UserX } from "lucide-react";
+import { fetchWithAuth } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 import { ModalConfirmacao } from "@/components/ui/modal-confirmacao";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import ErrorMessage from "@/components/ErrorMessage";
-import { Aluno } from "@/types/aluno"; // Supondo que esta interface existe e é relevante
+import { Aluno } from "@/types/aluno";
+import AlunoViewModal from "@/components/dialogs/AlunoViewModal";
 
 export default function StudentsIndex() {
-    const [, setLocation] = useLocation();
     const { toast } = useToast();
-    const queryClient = useQueryClient(); // Hook para acessar o query client
-    const {
-        isOpen: isConfirmOpen,
-        options: confirmOptions,
-        openConfirmDialog,
-        closeConfirmDialog,
-        confirm: confirmAction,
-    } = useConfirmDialog();
+    const queryClient = useQueryClient();
+    const { isOpen: isConfirmOpen, options: confirmOptions, openConfirmDialog, closeConfirmDialog, confirm: confirmAction } = useConfirmDialog();
     const [searchQuery, setSearchQuery] = useState("");
-    const [alunoParaExcluir, setAlunoParaExcluir] = useState<Aluno | null>(null);
+    const [selectedStudent, setSelectedStudent] = useState<Aluno | null>(null);
+    const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
-
-    const { data: students = [], isLoading, isError, error, refetch } = useQuery<Aluno[], Error>({
-        queryKey: ['/api/alunos'], // Chave padronizada
+    const { data: students = [], isLoading, isError, error } = useQuery<Aluno[], Error>({
+        queryKey: ['/api/alunos'],
         queryFn: async (): Promise<Aluno[]> => {
             const data = await fetchWithAuth<Aluno[]>("/api/alunos");
             return Array.isArray(data) ? data : [];
@@ -44,28 +35,19 @@ export default function StudentsIndex() {
         retry: 1,
     });
 
-    // Mutação para excluir aluno
     const deleteStudentMutation = useMutation<any, Error, string>({
-        mutationFn: (alunoId: string) => {
-            return fetchWithAuth(`/api/alunos/${alunoId}`, { method: 'DELETE' });
-        },
-        onSuccess: (data, alunoId) => {
-            toast({ title: "Aluno Removido", description: `${alunoParaExcluir?.nome || 'O aluno'} foi removido com sucesso.` });
-            // **INVALIDE A QUERY AQUI**
+        mutationFn: (alunoId: string) => fetchWithAuth(`/api/alunos/${alunoId}`, { method: 'DELETE' }),
+        onSuccess: () => {
+            toast({ title: "Aluno Removido", description: `O aluno foi removido com sucesso.` });
             queryClient.invalidateQueries({ queryKey: ['/api/alunos'] });
-            // Se você tiver outras queries que dependem de um aluno específico, invalide-as também:
-            // queryClient.invalidateQueries({ queryKey: ['aluno', alunoId] });
-            // queryClient.invalidateQueries({ queryKey: ['fichasAluno', alunoId] }); // Se o aluno tinha fichas
-            setAlunoParaExcluir(null);
-            closeConfirmDialog(); // Fecha o modal de confirmação
         },
         onError: (error) => {
             toast({ variant: "destructive", title: "Erro ao Remover", description: error.message || "Não foi possível remover o aluno." });
-            setAlunoParaExcluir(null);
-            closeConfirmDialog();
         },
+        onSettled: () => {
+            closeConfirmDialog();
+        }
     });
-
 
     const filteredStudents = students.filter((student) => {
         const fullName = (student.nome || "").toLowerCase();
@@ -74,56 +56,31 @@ export default function StudentsIndex() {
         return fullName.includes(query) || email.includes(query);
     });
 
-    const renderStudentSkeleton = () => {
-      return [...Array(5)].map((_, i) => (
-            <TableRow key={`skeleton-${i}`}>
-                <TableCell className="pl-6 py-4">
-                    <div className="flex items-center">
-                        <Skeleton className="h-10 w-10 rounded-full mr-4" />
-                        <Skeleton className="h-4 w-32 rounded" />
-                    </div>
-                </TableCell>
-                <TableCell className="px-6 py-4"><Skeleton className="h-4 w-48 rounded" /></TableCell>
-                <TableCell className="px-6 py-4"><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
-                <TableCell className="text-right pr-6 py-4">
-                    <div className="flex justify-end items-center space-x-1">
-                        <Skeleton className="h-8 w-8 rounded" />
-                        <Skeleton className="h-8 w-8 rounded" />
-                        <Skeleton className="h-8 w-8 rounded" />
-                    </div>
-                </TableCell>
-            </TableRow>
-        ));
-     };
-
     const handleDeleteClick = (aluno: Aluno) => {
-        if (!aluno._id || !aluno.nome) {
-            toast({ variant: "destructive", title: "Erro", description: "ID ou nome do aluno inválido para exclusão." });
-            return;
-        }
-        setAlunoParaExcluir(aluno); // Guarda o aluno para usar o nome no toast de sucesso
+        if (!aluno._id || !aluno.nome) return;
         openConfirmDialog({
             titulo: "Remover Aluno",
-            mensagem: `Tem certeza que deseja remover o aluno ${aluno.nome}? Esta ação não pode ser desfeita e removerá também suas fichas de treino.`,
-            textoConfirmar: "Remover Aluno",
-            textoCancelar: "Cancelar",
+            mensagem: `Tem certeza que deseja remover o aluno ${aluno.nome}?`,
             onConfirm: () => {
-                if (aluno._id) { // Segurança extra
-                    deleteStudentMutation.mutate(aluno._id);
-                }
+                if (aluno._id) deleteStudentMutation.mutate(aluno._id);
             },
         });
     };
 
+    const handleViewClick = (student: Aluno) => {
+        setSelectedStudent(student);
+        setIsViewModalOpen(true);
+    };
+
     return (
         <div className="p-4 md:p-6 lg:p-8">
-            <Card className="border border-gray-100 dark:border-gray-800 shadow-sm overflow-hidden bg-white dark:bg-gray-900">
-                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                    <CardTitle className="text-xl font-semibold text-gray-800 dark:text-gray-100">Alunos</CardTitle>
-                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+            <Card className="border shadow-sm overflow-hidden bg-white dark:bg-gray-900">
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-6 py-4 border-b">
+                    <CardTitle className="text-xl font-semibold">Alunos</CardTitle>
+                    <div className="flex flex-col sm:flex-row gap-2">
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 h-4 w-4 pointer-events-none" />
-                            <Input type="search" placeholder="Pesquisar por nome ou email..." className="pl-9 w-full sm:w-64 text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 rounded-md" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} aria-label="Pesquisar alunos" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                            <Input type="search" placeholder="Pesquisar..." className="pl-9 w-full sm:w-64" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                         </div>
                         <Link href="/alunos/novo">
                             <Button><Plus className="h-4 w-4 mr-2" /> Adicionar Aluno</Button>
@@ -135,78 +92,52 @@ export default function StudentsIndex() {
                         <Table>
                             <TableHeader className="bg-gray-50 dark:bg-gray-800/50">
                                 <TableRow>
-                                    <TableHead className="pl-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Aluno</TableHead>
-                                    <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</TableHead>
-                                    <TableHead className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</TableHead>
-                                    <TableHead className="pr-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Ações</TableHead>
+                                    <TableHead className="pl-6">Aluno</TableHead>
+                                    <TableHead>Email</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right pr-6">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
-                            <TableBody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                                {isLoading && renderStudentSkeleton()}
+                            <TableBody className="divide-y">
+                                {isLoading && [...Array(5)].map((_, i) => (
+                                    <TableRow key={`skeleton-${i}`}>
+                                        <TableCell className="pl-6 py-4"><Skeleton className="h-4 w-32" /></TableCell>
+                                        <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+                                        <TableCell><Skeleton className="h-6 w-16" /></TableCell>
+                                        <TableCell className="text-right pr-6"><Skeleton className="h-8 w-24" /></TableCell>
+                                    </TableRow>
+                                ))}
                                 {isError && !isLoading && (
-                                    <TableRow>
-                                        <TableCell colSpan={4} className="px-6 py-16 text-center">
-                                            <ErrorMessage title="Erro ao Carregar Alunos" message={error?.message || "Não foi possível buscar os dados. Tente novamente."} />
+                                    <TableRow><TableCell colSpan={4}><ErrorMessage title="Erro ao Carregar" message={error.message} /></TableCell></TableRow>
+                                )}
+                                {!isLoading && !isError && filteredStudents.map((student) => (
+                                    <TableRow key={student._id} className="hover:bg-gray-50/50">
+                                        <TableCell className="pl-6 font-medium">{student.nome}</TableCell>
+                                        <TableCell className="text-muted-foreground">{student.email}</TableCell>
+                                        <TableCell>
+                                            <Badge variant={student.status === "active" ? "success" : "destructive"}>
+                                                {student.status === "active" ? "Ativo" : "Inativo"}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="pr-6 text-right">
+                                            <div className="flex justify-end items-center space-x-1">
+                                                <Button variant="ghost" size="icon" onClick={() => handleViewClick(student)} title="Visualizar"><Eye className="h-4 w-4" /></Button>
+                                                <Link href={`/alunos/editar/${student._id}`}>
+                                                    <Button variant="ghost" size="icon" asChild title="Editar"><a><Pencil className="h-4 w-4" /></a></Button>
+                                                </Link>
+                                                <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDeleteClick(student)} title="Remover"><UserX className="h-4 w-4" /></Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
-                                )}
-                                {!isLoading && !isError && filteredStudents.length === 0 && (
-                                     <TableRow>
-                                        <TableCell colSpan={4} className="px-6 py-16 text-center text-gray-500 dark:text-gray-400">
-                                            {searchQuery ? `Nenhum aluno encontrado para "${searchQuery}".` : "Nenhum aluno cadastrado ainda."}
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                                {!isLoading && !isError && filteredStudents.length > 0 &&
-                                    filteredStudents.map((student) => (
-                                        <TableRow key={student._id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                            <TableCell className="pl-6 py-4 whitespace-nowrap">
-                                                <div className="flex items-center">
-                                                    <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 flex items-center justify-center mr-4 font-semibold text-sm">
-                                                        {student.nome?.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || '?'}
-                                                    </div>
-                                                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{student.nome}</div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{student.email || "-"}</TableCell>
-                                            <TableCell className="px-6 py-4 whitespace-nowrap">
-                                                <Badge variant={student.status === "active" ? "success" : "destructive"}>
-                                                    {student.status === "active" ? "Ativo" : "Inativo"}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="pr-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <div className="flex justify-end items-center space-x-1">
-                                                    <Button variant="ghost" size="icon" className="text-gray-400 hover:text-blue-600 h-8 w-8" onClick={() => setLocation(`/alunos/${student._id}`)} title="Visualizar">
-                                                        <Eye className="h-4 w-4" />
-                                                    </Button>
-                                                    <Link href={`/alunos/editar/${student._id}`}>
-                                                        <Button variant="ghost" size="icon" asChild className="text-gray-400 hover:text-yellow-600 h-8 w-8" title="Editar">
-                                                            <a><Pencil className="h-4 w-4" /></a>
-                                                        </Button>
-                                                    </Link>
-                                                    <Button variant="ghost" size="icon" className="text-gray-400 hover:text-red-600 h-8 w-8" onClick={() => handleDeleteClick(student)} title="Remover">
-                                                        <UserX className="h-4 w-4" /> {/* Ícone mais apropriado para excluir usuário */}
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                ))}
                             </TableBody>
                         </Table>
                     </div>
                 </CardContent>
             </Card>
 
-            <ModalConfirmacao
-                isOpen={isConfirmOpen}
-                onClose={closeConfirmDialog}
-                onConfirm={confirmAction} // confirmAction já chama deleteStudentMutation.mutate
-                titulo={confirmOptions.titulo}
-                mensagem={confirmOptions.mensagem}
-                textoConfirmar={confirmOptions.textoConfirmar}
-                textoCancelar={confirmOptions.textoCancelar}
-                isLoadingConfirm={deleteStudentMutation.isPending}
-            />
+            <AlunoViewModal aluno={selectedStudent} open={isViewModalOpen} onOpenChange={setIsViewModalOpen} />
+            <ModalConfirmacao isOpen={isConfirmOpen} onClose={closeConfirmDialog} onConfirm={confirmAction} titulo={confirmOptions.titulo} mensagem={confirmOptions.mensagem} isLoadingConfirm={deleteStudentMutation.isPending}/>
         </div>
     );
 }
