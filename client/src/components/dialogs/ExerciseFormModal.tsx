@@ -27,11 +27,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface Props {
   onCreated: () => void;
-  // =======================================================
-  // --- NOVA PROP PARA DIFERENCIAR O TIPO DE CRIAÇÃO ---
   creationType: 'app' | 'personal';
-  triggerButtonText?: string; // Texto customizável para o botão
-  // =======================================================
+  triggerButtonText?: string;
 }
 
 interface ExercicioPayload {
@@ -41,10 +38,7 @@ interface ExercicioPayload {
   tipo?: string;
   categoria?: string;
   urlVideo?: string;
-  // =======================================================
-  // --- NOVA PROPRIEDADE PARA O BACKEND ---
   isCustom?: boolean;
-  // =======================================================
 }
 
 interface ExercicioCriadoResponse {
@@ -52,6 +46,10 @@ interface ExercicioCriadoResponse {
 }
 
 export default function ExerciseFormModal({ onCreated, creationType, triggerButtonText = "Criar Exercício" }: Props) {
+  // =================== LOG DE DIAGNÓSTICO ===================
+  console.log(`%c[ExerciseFormModal] Renderizou com creationType: ${creationType}`, 'color: green;');
+  // ==========================================================
+
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -64,30 +62,25 @@ export default function ExerciseFormModal({ onCreated, creationType, triggerButt
 
   const formatVideoUrl = (url: string): string | undefined => {
     if (!url) return undefined;
-    if (url.includes("youtu.be/")) {
-      const id = url.split("youtu.be/")[1].split(/[?&]/)[0];
-      return `https://www.youtube.com/embed/${id}`;
+    if (url.includes("youtube.com/watch?v=")) {
+        const videoId = url.split("v=")[1].split("&")[0];
+        return `https://www.youtube.com/embed/${videoId}`;
     }
-     if (url.includes("youtube.com/watch?v=")) {
-        const id = url.split("v=")[1].split("&")[0];
-        return `https://www.youtube.com/embed/${id}`;
+    if (url.includes("youtu.be/")) {
+        const videoId = url.split("youtu.be/")[1].split("?")[0];
+        return `https://www.youtube.com/embed/${videoId}`;
     }
     return url;
   };
 
   const createExerciseMutation = useMutation<ExercicioCriadoResponse, Error, ExercicioPayload>({
-    mutationFn: (newExerciseData) => {
-      // A rota de criação é sempre a mesma, o backend diferencia pelo payload
-      return apiRequest<ExercicioCriadoResponse>("POST", "/api/exercicios", newExerciseData);
-    },
+    mutationFn: (newExerciseData) => apiRequest<ExercicioCriadoResponse>("POST", "/api/exercicios", newExerciseData),
     onSuccess: () => {
       setOpen(false);
       setNome(""); setDescricao(""); setGrupoMuscular(""); setTipo(""); setCategoria(""); setUrlVideo("");
       onCreated();
       toast({ title: "Exercício criado com sucesso!" });
-      queryClient.invalidateQueries({ queryKey: ['exercicios', 'app'] });
-      queryClient.invalidateQueries({ queryKey: ['exercicios', 'meus'] });
-      queryClient.invalidateQueries({ queryKey: ['exercicios', 'todos'] });
+      queryClient.invalidateQueries({ queryKey: ['exercicios'] });
     },
     onError: (error) => {
        toast({
@@ -106,20 +99,19 @@ export default function ExerciseFormModal({ onCreated, creationType, triggerButt
 
     const finalVideoUrl = formatVideoUrl(urlVideo);
     
-    // =======================================================
-    // --- PAYLOAD ATUALIZADO ---
-    // Agora enviamos 'isCustom' com base no tipo de criação
     const payload: ExercicioPayload = {
       nome: nome.trim(),
-      isCustom: creationType === 'personal', // true se for do personal, false se for do app
+      isCustom: creationType === 'personal',
       ...(descricao.trim() && { descricao: descricao.trim() }),
       ...(grupoMuscular && { grupoMuscular }),
       ...(tipo && { tipo }),
       ...(categoria && { categoria }),
       ...(finalVideoUrl && { urlVideo: finalVideoUrl }),
     };
-    // =======================================================
 
+    // =================== LOG DE DIAGNÓSTICO ===================
+    console.log('%c[ExerciseFormModal] Enviando payload para API:', 'color: orange; font-weight: bold;', payload);
+    // ==========================================================
     createExerciseMutation.mutate(payload);
   };
 
