@@ -1,5 +1,5 @@
 // client/src/components/dialogs/ExerciseEditModal.tsx
-import React, { useEffect, useState } from "react"; // Import React
+import { useEffect, useState } from "react"; // 'React' foi removido daqui
 import {
   Dialog,
   DialogTrigger,
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Pencil, Loader2 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast"; // <<< USA O HOOK
+import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/select";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Badge } from "@/components/ui/badge";
 
 // Interfaces
 interface ExercicioData {
@@ -39,91 +38,67 @@ interface ExercicioData {
 interface Props {
   exercicio: ExercicioData;
   onUpdated: () => void;
+  gruposMusculares: string[];
+  categoriasExercicio: string[];
 }
 type UpdateExercicioPayload = Omit<ExercicioData, '_id'>;
-interface UpdatedExercicioResponse extends ExercicioData {}
 
-const NONE_FILTER_VALUE = "none"; // Valor para opção "Nenhum/Nenhuma"
+const NONE_FILTER_VALUE = "none";
 
-export default function ExerciseEditModal(props: Props) {
-  const { exercicio, onUpdated } = props;
-  const { toast } = useToast(); // <<< USA O HOOK
+export default function ExerciseEditModal({ exercicio, onUpdated, gruposMusculares, categoriasExercicio }: Props) {
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
-  // Estados do formulário
   const [nome, setNome] = useState(exercicio.nome);
   const [descricao, setDescricao] = useState(exercicio.descricao || "");
   const [categoria, setCategoria] = useState(exercicio.categoria || NONE_FILTER_VALUE);
   const [grupoMuscular, setGrupoMuscular] = useState(exercicio.grupoMuscular || NONE_FILTER_VALUE);
-  const [tipo, setTipo] = useState(exercicio.tipo || NONE_FILTER_VALUE);
   const [urlVideo, setUrlVideo] = useState(exercicio.urlVideo || "");
 
-  // Resetar estado quando o modal abrir ou o exercício mudar
   useEffect(() => {
       if (exercicio && open) {
           setNome(exercicio.nome);
           setDescricao(exercicio.descricao || "");
           setCategoria(exercicio.categoria || NONE_FILTER_VALUE);
           setGrupoMuscular(exercicio.grupoMuscular || NONE_FILTER_VALUE);
-          setTipo(exercicio.tipo || NONE_FILTER_VALUE);
           setUrlVideo(exercicio.urlVideo || "");
       }
-      // Não reseta ao fechar para manter os dados se o usuário cancelar e reabrir
   }, [exercicio, open]);
 
-  // Formata URL do vídeo
   const formatVideoUrl = (url: string): string | undefined => {
     if (!url) return undefined;
-    let embedUrl: string | undefined = undefined;
+    if (url.includes("youtube.com/watch?v=")) {
+      const videoId = url.split("v=")[1].split("&")[0];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
     if (url.includes("youtu.be/")) {
-      const id = url.split("youtu.be/")[1]?.split(/[?&]/)[0];
-      if (id) {
-        const time = url.includes("?t=") ? url.split("?t=")[1]?.split("&")[0] : "";
-        embedUrl = `https://www.youtube.com/embed/${id}${time ? `?start=${time}` : ""}`;
-      }
-    } else if (url.includes("youtube.com/watch?v=")) {
-        const id = url.split("v=")[1]?.split("&")[0];
-         if (id) {
-            const time = url.includes("?t=") ? url.split("?t=")[1]?.split("&")[0] : "";
-            embedUrl = `https://www.youtube.com/embed/${id}${time ? `?start=${time}` : ""}`;
-         }
-    } else if (url.includes("drive.google.com/file/d/")) {
-      const id = url.split("/d/")[1]?.split("/")[0];
-      if (id) {
-         embedUrl = `https://drive.google.com/file/d/${id}/preview`;
-      }
+        const videoId = url.split("youtu.be/")[1].split("?")[0];
+        return `https://www.youtube.com/embed/${videoId}`;
     }
-    if (!embedUrl && (url.startsWith('http://') || url.startsWith('https://'))) {
-        return url;
-    }
-    return embedUrl;
-  }
+    return url;
+  };
 
-  // Mutação para atualizar
-  const updateMutation = useMutation<
-    UpdatedExercicioResponse, Error, UpdateExercicioPayload
-  >({
-    mutationFn: (payload) => apiRequest<UpdatedExercicioResponse>("PUT", `/api/exercicios/${exercicio._id}`, payload),
+  const updateMutation = useMutation<ExercicioData, Error, UpdateExercicioPayload>({
+    mutationFn: (payload) => apiRequest("PUT", `/api/exercicios/${exercicio._id}`, payload),
     onSuccess: (data) => {
-      toast({ title: "Sucesso!", description: `Exercício "${data.nome}" atualizado.` }); // Chama toast do hook
+      toast({ title: "Sucesso!", description: `Exercício "${data.nome}" atualizado.` });
       onUpdated();
-      queryClient.invalidateQueries({ queryKey: ['/api/exercicios/meus'] });
+      queryClient.invalidateQueries({ queryKey: ['exercicios'] });
       setOpen(false);
     },
     onError: (error) => {
-      toast({ // Chama toast do hook
+      toast({
         variant: "destructive",
         title: "Erro ao Atualizar",
         description: error.message || "Não foi possível salvar as alterações.",
       });
     },
-  })
+  });
 
-  // Handler de submit
   const handleSubmit = () => {
      if (!nome.trim()) {
-       toast({ title: "Erro de Validação", description: "O nome é obrigatório.", variant: "destructive" }); // Chama toast do hook
+       toast({ title: "Erro de Validação", description: "O nome é obrigatório.", variant: "destructive" });
        return;
      }
     const finalVideoUrl = formatVideoUrl(urlVideo);
@@ -132,15 +107,12 @@ export default function ExerciseEditModal(props: Props) {
       descricao: descricao.trim() || undefined,
       categoria: categoria === NONE_FILTER_VALUE ? undefined : categoria,
       grupoMuscular: grupoMuscular === NONE_FILTER_VALUE ? undefined : grupoMuscular,
-      tipo: tipo === NONE_FILTER_VALUE ? undefined : tipo,
+      tipo: undefined, // Mantido para compatibilidade
       urlVideo: finalVideoUrl || undefined,
     };
     updateMutation.mutate(payload);
-  }
+  };
 
-  // Definição de cores (mantido)
-  const corGrupo: Record<string, string> = { /* ... */ };
-  const corTipo: Record<string, string> = { /* ... */ };
   const isLoading = updateMutation.isPending;
 
   return (
@@ -155,15 +127,28 @@ export default function ExerciseEditModal(props: Props) {
           <DialogTitle>Editar Exercício</DialogTitle>
           <DialogDescription>Atualize os dados do exercício abaixo.</DialogDescription>
         </DialogHeader>
-        <div className="flex gap-2 mb-2 flex-wrap -mt-2">
-           {grupoMuscular && grupoMuscular !== NONE_FILTER_VALUE && ( <Badge variant="outline" className={corGrupo[grupoMuscular] || "border-border"}>{grupoMuscular}</Badge> )}
-           {tipo && tipo !== NONE_FILTER_VALUE && ( <Badge variant="outline" className={corTipo[tipo] || "border-border"}>{tipo}</Badge> )}
-        </div>
         <div className="flex flex-col gap-4 py-4">
              <div><Label htmlFor={`edit-nome-${exercicio._id}`}>Nome*</Label><Input id={`edit-nome-${exercicio._id}`} value={nome} onChange={(e) => setNome(e.target.value)} disabled={isLoading} required /></div>
-             <div><Label htmlFor={`edit-grupo-${exercicio._id}`}>Grupo Muscular</Label><Select value={grupoMuscular} onValueChange={setGrupoMuscular} disabled={isLoading}><SelectTrigger id={`edit-grupo-${exercicio._id}`}><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent><SelectItem value={NONE_FILTER_VALUE}>Nenhum</SelectItem><SelectItem value="Peitoral">Peitoral</SelectItem>{/*...outros*/}</SelectContent></Select></div>
-             <div><Label htmlFor={`edit-tipo-${exercicio._id}`}>Tipo</Label><Select value={tipo} onValueChange={setTipo} disabled={isLoading}><SelectTrigger id={`edit-tipo-${exercicio._id}`}><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent><SelectItem value={NONE_FILTER_VALUE}>Nenhum</SelectItem><SelectItem value="Musculação">Musculação</SelectItem>{/*...outros*/}</SelectContent></Select></div>
-             <div><Label htmlFor={`edit-categoria-${exercicio._id}`}>Categoria</Label><Select value={categoria} onValueChange={setCategoria} disabled={isLoading}><SelectTrigger id={`edit-categoria-${exercicio._id}`}><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent><SelectItem value={NONE_FILTER_VALUE}>Nenhuma</SelectItem><SelectItem value="Superior">Superior</SelectItem>{/*...outros*/}</SelectContent></Select></div>
+             
+             <div><Label htmlFor={`edit-grupo-${exercicio._id}`}>Grupo Muscular</Label>
+                <Select value={grupoMuscular} onValueChange={setGrupoMuscular} disabled={isLoading}>
+                    <SelectTrigger id={`edit-grupo-${exercicio._id}`}><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={NONE_FILTER_VALUE}>Nenhum</SelectItem>
+                        {gruposMusculares.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+             </div>
+             <div><Label htmlFor={`edit-categoria-${exercicio._id}`}>Categoria</Label>
+                <Select value={categoria} onValueChange={setCategoria} disabled={isLoading}>
+                    <SelectTrigger id={`edit-categoria-${exercicio._id}`}><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={NONE_FILTER_VALUE}>Nenhuma</SelectItem>
+                        {categoriasExercicio.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+             </div>
+             
              <div><Label htmlFor={`edit-descricao-${exercicio._id}`}>Descrição</Label><Textarea id={`edit-descricao-${exercicio._id}`} value={descricao} onChange={(e) => setDescricao(e.target.value)} disabled={isLoading} /></div>
              <div><Label htmlFor={`edit-urlVideo-${exercicio._id}`}>URL do Vídeo</Label><Input id={`edit-urlVideo-${exercicio._id}`} value={urlVideo} onChange={(e) => setUrlVideo(e.target.value)} disabled={isLoading} /></div>
         </div>
