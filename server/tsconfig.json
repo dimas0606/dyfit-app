@@ -1,25 +1,17 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
+    "module": "CommonJS", // Formato mais compatível para Node.js no Render
+    "moduleResolution": "node",
+    "outDir": "./dist", // Onde os arquivos compilados irão
     "rootDir": "./",
-    "outDir": "./dist",
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipLibCheck": true,
-    
-    /* Adicionando baseUrl e paths para o servidor também */
-    "baseUrl": ".",
-    "paths": {
-      "@shared/*": ["../shared/*"]
-    }
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "typeRoots": ["./node_modules/@types", "../shared/types"] // Aponta para a pasta de tipos compartilhados
   },
-  "include": [
-    "src/**/*.ts", // Inclui todos os arquivos .ts na pasta src do servidor
-    "middlewares/**/*.ts", // Inclui seus middlewares
-    "models/**/*.ts", // Inclui seus models
-    "../shared/types/express/index.d.ts" // <-- A LINHA MÁGICA QUE RESOLVE O ERRO
-  ],
+  "include": ["**/*.ts"], // Inclui todos os arquivos .ts do servidor
   "exclude": ["node_modules"]
 }
