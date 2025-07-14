@@ -63,36 +63,53 @@ router.put("/:id", authenticateToken, async (req: Request, res: Response, next: 
   }
 });
 
-// PUT /:id/pasta - Mover rotina para uma pasta
+// --- ROTA MODIFICADA ---
+// PUT /api/treinos/:id/pasta - Mover rotina para uma pasta
 router.put("/:id/pasta", authenticateToken, async (req: Request, res: Response, next: NextFunction) => {
     const { id: rotinaId } = req.params;
-    const { pastaId } = req.body;
+    // O frontend pode enviar 'null' para remover da pasta
+    const { pastaId } = req.body; 
     const criadorId = req.user?.id;
 
+    // --- MELHORIA 1: Validação inicial mais robusta ---
     if (!criadorId || !mongoose.Types.ObjectId.isValid(rotinaId)) {
-        return res.status(400).json({ mensagem: "Requisição inválida." });
+        return res.status(400).json({ mensagem: "ID da rotina inválido ou usuário não autenticado." });
     }
+    // Permite 'null' mas valida o ID se ele for fornecido
     if (pastaId && !mongoose.Types.ObjectId.isValid(pastaId)) {
         return res.status(400).json({ mensagem: "ID da pasta inválido." });
     }
     
     try {
-        const rotina = await Treino.findOne({ _id: new Types.ObjectId(rotinaId), criadorId: new Types.ObjectId(criadorId) });
-        if (!rotina) return res.status(404).json({ mensagem: "Rotina não encontrada ou você não tem permissão." });
-        
+        // --- MELHORIA 2: Verificação de segurança da pasta de destino (opcional, mas bom para integridade) ---
+        // Se uma pastaId foi fornecida, verifica se ela existe e pertence ao usuário.
         if (pastaId) {
-            const pastaDestino = await PastaTreino.findOne({ _id: new Types.ObjectId(pastaId), criadorId: new Types.ObjectId(criadorId) });
-            if (!pastaDestino) return res.status(404).json({ mensagem: "Pasta de destino não encontrada." });
+            const pastaDestino = await PastaTreino.findOne({ _id: pastaId, criadorId: criadorId });
+            if (!pastaDestino) {
+                return res.status(404).json({ mensagem: "Pasta de destino não encontrada ou você não tem permissão para usá-la." });
+            }
+        }
+
+        // --- MELHORIA 3: Operação atômica e retorno do documento atualizado ---
+        // Usa findOneAndUpdate para encontrar, atualizar e retornar o novo documento em uma única chamada.
+        const rotinaAtualizada = await Treino.findOneAndUpdate(
+            { _id: rotinaId, criadorId: criadorId }, // Filtro de segurança para garantir posse
+            { $set: { pastaId: pastaId ? new Types.ObjectId(pastaId) : null } }, // Atualiza o campo pastaId
+            { new: true } // Opção para retornar o documento APÓS a atualização
+        ).populate('pastaId', 'nome'); // Popula o nome da pasta para ser usado no frontend
+
+        if (!rotinaAtualizada) {
+            return res.status(404).json({ mensagem: "Rotina não encontrada ou você não tem permissão para movê-la." });
         }
         
-        rotina.pastaId = pastaId ? new Types.ObjectId(pastaId) : null;
-        await rotina.save();
-        
-        res.status(200).json({ mensagem: "Rotina movida com sucesso." });
+        // --- MELHORIA 4: Retorna o objeto da rotina completo e atualizado ---
+        res.status(200).json(rotinaAtualizada);
+
     } catch (error) {
         next(error);
     }
 });
+
 
 // DELETE /api/treinos/:id - Excluir rotina
 router.delete("/:id", authenticateToken, async (req: Request, res: Response, next: NextFunction) => {
