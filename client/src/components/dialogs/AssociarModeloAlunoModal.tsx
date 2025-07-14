@@ -1,5 +1,6 @@
 // client/src/components/dialogs/AssociarModeloAlunoModal.tsx
 // ATUALIZADO: Adicionados mais logs no handleSubmit para depurar a chamada API
+// CORREÇÃO: Adicionada chave única ao Select e SelectContent para resolver erro de 'removeChild'
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -50,6 +51,7 @@ const AssociarModeloAlunoModal: React.FC<AssociarModeloAlunoModalProps> = ({
   const { toast } = useToast();
   const queryClient = useTanstackQueryClient();
 
+  // Hook para buscar alunos
   const { data: alunos = [], isLoading: isLoadingAlunos } = useQuery<Aluno[], Error>({
     queryKey: ["/api/alunos/associar-modal"], // Chave ligeiramente diferente para evitar conflitos se houver outra query /api/alunos
     queryFn: async () => {
@@ -62,12 +64,14 @@ const AssociarModeloAlunoModal: React.FC<AssociarModeloAlunoModalProps> = ({
     staleTime: 1000 * 60 * 5, // Cache de 5 minutos
   });
 
+  // Efeito para resetar o aluno selecionado ao abrir o modal ou mudar o modelo
   useEffect(() => {
     if (isOpen) {
       setSelectedAlunoId(undefined); // Reseta ao abrir/mudar ficha
     }
   }, [isOpen, fichaModeloId]);
 
+  // Função para lidar com a submissão do formulário
   const handleSubmit = async () => {
     if (!fichaModeloId || !selectedAlunoId) {
       toast({
@@ -119,6 +123,7 @@ const AssociarModeloAlunoModal: React.FC<AssociarModeloAlunoModalProps> = ({
     }
   };
 
+  // Não renderiza o modal se não estiver aberto ou se faltarem dados essenciais
   if (!isOpen || !fichaModeloId || !fichaModeloTitulo) {
     return null;
   }
@@ -149,7 +154,9 @@ const AssociarModeloAlunoModal: React.FC<AssociarModeloAlunoModalProps> = ({
             ) : alunos.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum aluno cadastrado para selecionar.</p>
             ) : (
+              // Adicionada a chave 'key' ao componente Select para garantir a correta re-renderização
               <Select
+                key={`select-${fichaModeloId}-${selectedAlunoId}`} // Chave dinâmica para forçar re-montagem se o modelo ou aluno mudar
                 value={selectedAlunoId}
                 onValueChange={setSelectedAlunoId}
                 disabled={isSubmitting}
@@ -157,7 +164,8 @@ const AssociarModeloAlunoModal: React.FC<AssociarModeloAlunoModalProps> = ({
                 <SelectTrigger id="aluno-select-associar" className="w-full">
                   <SelectValue placeholder="Escolha um aluno..." />
                 </SelectTrigger>
-                <SelectContent>
+                {/* Adicionada a chave 'key' ao componente SelectContent */}
+                <SelectContent key={`select-content-${fichaModeloId}`}>
                   {alunos.map((aluno) => (
                     <SelectItem key={aluno._id} value={aluno._id}>
                       {aluno.nome} ({aluno.email})
