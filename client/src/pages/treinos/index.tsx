@@ -53,14 +53,24 @@ export default function TreinosPage() {
         onSettled: () => setIsDeleteAlertOpen(false),
     });
 
+    const moveRotinaMutation = useMutation<RotinaListagemItem, Error, { rotinaId: string; pastaId: string | null }>({
+        mutationFn: ({ rotinaId, pastaId }) => apiRequest("PUT", `/api/treinos/${rotinaId}/pasta`, { pastaId }),
+        onSuccess: (updatedRotina) => {
+            toast({ title: "Sucesso!", description: `Rotina "${updatedRotina.titulo}" movida.` });
+            queryClient.setQueryData<RotinaListagemItem[]>(["/api/treinos"], (oldData) => {
+                if (!oldData) return [updatedRotina];
+                return oldData.map(r => r._id === updatedRotina._id ? updatedRotina : r);
+            });
+        },
+        onError: (err) => toast({ variant: "destructive", title: "Erro ao Mover", description: err.message }),
+    });
+
     const handleOpenCreateModal = () => { setRotinaParaEditar(null); setIsRotinaModalOpen(true); };
     const handleOpenEditModal = (r: RotinaListagemItem) => { setIsViewModalOpen(false); setRotinaParaEditar(r); setIsRotinaModalOpen(true); };
     const handleOpenViewModal = (r: RotinaListagemItem) => { setRotinaParaVisualizar(r); setIsViewModalOpen(true); };
     const handleAssignClick = (id: string, t: string) => { setIsViewModalOpen(false); setRotinaModeloParaAssociar({ id, titulo: t }); setIsAssociarModeloModalOpen(true); };
     const handleOpenPastaModal = (p?: PastaExistente) => { setPastaParaEditar(p || null); setIsPastaModalOpen(true); };
     
-    // =======================================================
-    // --- FUNÇÕES DE EXCLUSÃO SEPARADAS ---
     const handleDeleteRotinaClick = (rotina: RotinaListagemItem) => {
         setItemParaExcluir({ id: rotina._id, nome: rotina.titulo, tipo: 'rotina' });
         setIsDeleteAlertOpen(true);
@@ -70,9 +80,23 @@ export default function TreinosPage() {
         setItemParaExcluir({ id: pasta._id, nome: pasta.nome, tipo: 'pasta' });
         setIsDeleteAlertOpen(true);
     };
-    // =======================================================
     
     const handleConfirmDelete = () => { if (itemParaExcluir) deleteMutation.mutate(itemParaExcluir); };
+
+    const handleMoveToFolder = (rotinaId: string, pastaId: string) => {
+        moveRotinaMutation.mutate({ rotinaId, pastaId });
+    };
+
+    const handleRemoveFromFolder = (rotinaId: string) => {
+        moveRotinaMutation.mutate({ rotinaId, pastaId: null });
+    };
+
+    // --- FUNÇÃO DE CALLBACK PARA O MODAL ---
+    const handlePastaSuccess = () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/pastas/treinos"] });
+        setIsPastaModalOpen(false);
+        setPastaParaEditar(null);
+    };
 
     if (isLoadingRotinas || isLoadingPastas) return <LoadingSpinner text="Carregando dados..." />;
     if (errorRotinas) return <ErrorMessage title="Erro ao Carregar Dados" message={errorRotinas.message} />;
@@ -81,6 +105,15 @@ export default function TreinosPage() {
     const rotinasIndividuais = rotinas.filter(r => r.tipo === 'individual');
     const rotinasPorPasta = pastas.sort((a, b) => (a.ordem || 0) - (b.ordem || 0)).map(p => ({ ...p, rotinas: rotinasModelo.filter(r => (typeof r.pastaId === 'string' ? r.pastaId : r.pastaId?._id) === p._id) }));
     const rotinasSemPasta = rotinasModelo.filter(r => !r.pastaId);
+
+    const cardHandlers = {
+        onView: handleOpenViewModal,
+        onEdit: handleOpenEditModal,
+        onDelete: handleDeleteRotinaClick,
+        onAssign: handleAssignClick,
+        onMoveToFolder: handleMoveToFolder,
+        onRemoveFromFolder: handleRemoveFromFolder,
+    };
 
     return (
         <div className="container mx-auto py-8 px-4">
@@ -101,21 +134,29 @@ export default function TreinosPage() {
                                 </AccordionTrigger>
                                 <AccordionContent className="p-4 border-t dark:border-slate-700">
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 min-h-[50px]">
-                                        {pasta.rotinas.map(rotina => <RotinaCard key={rotina._id} rotina={rotina} pastas={pastas} onView={handleOpenViewModal} onEdit={handleOpenEditModal} onDelete={handleDeleteRotinaClick} onAssign={handleAssignClick} />)}
+                                        {pasta.rotinas.map(rotina => <RotinaCard key={rotina._id} rotina={rotina} pastas={pastas} {...cardHandlers} />)}
                                     </div>
                                 </AccordionContent>
                             </AccordionItem>
                         ))}
                     </Accordion>
-                    {rotinasSemPasta.length > 0 && (<div><h3 className="text-lg font-semibold mb-4 pt-4 border-t dark:border-slate-700">Rotinas Sem Pasta</h3><div className="p-4 border-2 border-dashed dark:border-slate-700 rounded-lg min-h-[100px]"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{rotinasSemPasta.map(rotina => <RotinaCard key={rotina._id} rotina={rotina} pastas={pastas} onView={handleOpenViewModal} onEdit={handleOpenEditModal} onDelete={handleDeleteRotinaClick} onAssign={handleAssignClick} />)}</div></div></div>)}
+                    {rotinasSemPasta.length > 0 && (<div><h3 className="text-lg font-semibold mb-4 pt-4 border-t dark:border-slate-700">Rotinas Sem Pasta</h3><div className="p-4 border-2 border-dashed dark:border-slate-700 rounded-lg min-h-[100px]"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{rotinasSemPasta.map(rotina => <RotinaCard key={rotina._id} rotina={rotina} pastas={pastas} {...cardHandlers} />)}</div></div></div>)}
                 </div>
             )}
-            {aba === 'individuais' && (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{rotinasIndividuais.map(rotina => {const aluno = alunos.find(a => a._id === (typeof rotina.alunoId === 'string' ? rotina.alunoId : rotina.alunoId?._id)); return (<RotinaCard key={rotina._id} rotina={rotina} pastas={[]} alunoNome={aluno?.nome} onView={handleOpenViewModal} onEdit={handleOpenEditModal} onDelete={handleDeleteRotinaClick} onAssign={handleAssignClick} />)})}</div>)}
+            {aba === 'individuais' && (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{rotinasIndividuais.map(rotina => {const aluno = alunos.find(a => a._id === (typeof rotina.alunoId === 'string' ? rotina.alunoId : rotina.alunoId?._id)); return (<RotinaCard key={rotina._id} rotina={rotina} pastas={[]} alunoNome={aluno?.nome} {...cardHandlers} />)})}</div>)}
             
-            {isRotinaModalOpen && <RotinaFormModal open={isRotinaModalOpen} onClose={() => setIsRotinaModalOpen(false)} onSuccess={() => {}} alunos={alunos} rotinaParaEditar={rotinaParaEditar} />}
+            <RotinaFormModal open={isRotinaModalOpen} onClose={() => setIsRotinaModalOpen(false)} onSuccess={() => {}} alunos={alunos} rotinaParaEditar={rotinaParaEditar} />
             <RotinaViewModal isOpen={isViewModalOpen} onClose={() => setIsViewModalOpen(false)} rotina={rotinaParaVisualizar} onEdit={handleOpenEditModal} onAssign={handleAssignClick} />
             {isAssociarModeloModalOpen && rotinaModeloParaAssociar && <AssociarModeloAlunoModal isOpen={isAssociarModeloModalOpen} onClose={() => setIsAssociarModeloModalOpen(false)} fichaModeloId={rotinaModeloParaAssociar.id} fichaModeloTitulo={rotinaModeloParaAssociar.titulo}/>}
-            <PastaFormModal isOpen={isPastaModalOpen} onClose={() => {setIsPastaModalOpen(false); setPastaParaEditar(null);}} initialData={pastaParaEditar} />
+            
+            {/* CORREÇÃO: Passando a função de callback necessária para o modal */}
+            <PastaFormModal 
+                isOpen={isPastaModalOpen} 
+                onClose={() => {setIsPastaModalOpen(false); setPastaParaEditar(null);}} 
+                onSuccessCallback={handlePastaSuccess} 
+                initialData={pastaParaEditar} 
+            />
+
             <AlertDialog open={isDeleteAlertOpen} onOpenChange={(open) => !open && setIsDeleteAlertOpen(false)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle><AlertDialogDescription>Tem certeza que deseja excluir "{itemParaExcluir?.nome}"?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleConfirmDelete} disabled={deleteMutation.isPending} className="bg-red-600 hover:bg-red-700">Confirmar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
         </div>
     );
