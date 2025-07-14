@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
 export interface PastaFormData { nome: string; }
@@ -14,13 +14,13 @@ export interface PastaExistente extends PastaFormData { _id: string; }
 interface PastaFormModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccessCallback: () => void; // Nova prop para sinalizar sucesso
   initialData?: PastaExistente | null;
 }
 
-const PastaFormModal: React.FC<PastaFormModalProps> = ({ isOpen, onClose, initialData }) => {
+const PastaFormModal: React.FC<PastaFormModalProps> = ({ isOpen, onClose, onSuccessCallback, initialData }) => {
   const [nomePasta, setNomePasta] = useState('');
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const isEditing = !!initialData;
 
   useEffect(() => {
@@ -32,12 +32,15 @@ const PastaFormModal: React.FC<PastaFormModalProps> = ({ isOpen, onClose, initia
       const endpoint = isEditing ? `/api/pastas/treinos/${initialData?._id}` : "/api/pastas/treinos";
       return apiRequest(isEditing ? "PUT" : "POST", endpoint, data);
     },
+    // O modal não invalida mais a query, ele apenas avisa o pai que teve sucesso.
     onSuccess: () => {
       toast({ title: "Sucesso!", description: `Pasta ${isEditing ? 'atualizada' : 'criada'} com sucesso.` });
-      queryClient.invalidateQueries({ queryKey: ["/api/pastas/treinos"] });
-      onClose();
+      onSuccessCallback(); // Chama a função do componente pai
     },
-    onError: (error) => toast({ variant: "destructive", title: "Erro", description: error.message }),
+    onError: (error) => {
+      toast({ variant: "destructive", title: "Erro", description: error.message });
+      onClose(); // Fecha o modal mesmo em caso de erro.
+    },
   });
 
   const handleSubmit = () => {
@@ -47,6 +50,8 @@ const PastaFormModal: React.FC<PastaFormModalProps> = ({ isOpen, onClose, initia
     }
     mutation.mutate({ nome: nomePasta.trim() });
   };
+
+  if (!isOpen) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
