@@ -1,27 +1,24 @@
 // server/models/Aluno.ts
 import mongoose, { Schema, Document } from "mongoose";
-import bcrypt from 'bcryptjs'; // <<< ALTERAÇÃO AQUI: de 'bcrypt' para 'bcryptjs'
+import bcrypt from 'bcryptjs';
 
-console.log("--- [server/models/Aluno.ts] Modelo Carregado (com funcionalidade de senha) ---");
-
-// Interface para tipar o documento Aluno, incluindo campos de senha
 export interface IAluno extends Document {
   nome: string;
   email: string;
-  passwordHash?: string; // Adicionado para armazenar a senha hasheada
+  passwordHash?: string;
   phone?: string;
-  birthDate: string; 
-  gender: string;
-  goal: string;
-  weight: number;
-  height: number;
-  startDate: string; 
+  // <<< CORREÇÃO: Campos agora são opcionais >>>
+  birthDate?: string; 
+  gender?: string;
+  goal?: string;
+  weight?: number;
+  height?: number;
+  startDate?: string; 
   status: 'active' | 'inactive';
   notes?: string;
   trainerId: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
-  // Método para comparar senhas
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
@@ -41,13 +38,14 @@ const alunoSchema = new Schema<IAluno>(
         select: false,
     },
     phone: { type: String, trim: true },
-    birthDate: { type: String, required: [true, 'A data de nascimento é obrigatória'] },
-    gender: { type: String, required: [true, 'O gênero é obrigatório'] },
-    goal: { type: String, required: [true, 'O objetivo é obrigatório'] },
-    weight: { type: Number, required: [true, 'O peso é obrigatório'] },
-    height: { type: Number, required: [true, 'A altura é obrigatória'] },
-    startDate: { type: String, required: [true, 'A data de início é obrigatória'] },
-    status: { type: String, required: [true, 'O status é obrigatório'], enum: ['active', 'inactive'], default: 'active' },
+    // <<< CORREÇÃO: Removida a obrigatoriedade (required: true) dos campos abaixo >>>
+    birthDate: { type: String },
+    gender: { type: String },
+    goal: { type: String },
+    weight: { type: Number },
+    height: { type: Number },
+    startDate: { type: String },
+    status: { type: String, required: true, enum: ['active', 'inactive'], default: 'active' },
     notes: { type: String },
     trainerId: {
       type: Schema.Types.ObjectId,
@@ -60,7 +58,6 @@ const alunoSchema = new Schema<IAluno>(
   }
 );
 
-// Hook pre-save para hashear a senha ANTES de salvar, se ela foi modificada
 alunoSchema.pre<IAluno>('save', async function (next) {
     if (!this.isModified('passwordHash')) { 
         return next();
@@ -76,7 +73,6 @@ alunoSchema.pre<IAluno>('save', async function (next) {
     }
 });
 
-// Método para comparar a senha candidata com o hash armazenado no documento
 alunoSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
     if (!this.passwordHash) {
         return false;

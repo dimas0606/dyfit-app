@@ -6,17 +6,16 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors, { CorsOptions } from 'cors';
 
-// Importação das rotas
+// Importação dos roteadores corretos
 import authRoutes from './src/routes/auth';
 import convitePublicRoutes from './src/routes/convitePublicRoutes';
 import conviteAlunoPublicRoutes from './src/routes/conviteAlunoPublicRoutes';
 import dashboardRoutes from './src/routes/dashboardGeralRoutes';
-// import alunoRoutes from './src/routes/alunos'; // <<< REMOVIDO
 import treinoRoutes from './src/routes/treinos';
 import exercicioRoutes from './src/routes/exercicios';
 import sessionsRoutes from './src/routes/sessionsRoutes';
 import pastaRoutes from './src/routes/pastasTreinos';
-import alunoApiRoutes from './src/routes/alunoApiRoutes'; // <<< AGORA É A ÚNICA FONTE
+import alunoApiRoutes from './src/routes/alunoApiRoutes'; // ÚNICA FONTE PARA ROTAS DE ALUNO
 import adminRoutes from './src/routes/adminRoutes';
 
 // Importação dos middlewares
@@ -58,7 +57,7 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('Conectado ao MongoDB com sucesso!'))
   .catch(err => console.error('Falha ao conectar com o MongoDB:', err));
 
-// --- ESTRUTURA DE ROTAS SIMPLIFICADA E CORRIGIDA ---
+// --- ESTRUTURA DE ROTAS FINAL ---
 app.use('/api/public/convites', convitePublicRoutes); 
 app.use('/api/public/convite-aluno', conviteAlunoPublicRoutes);
 app.use('/api/auth', authRoutes);
@@ -71,7 +70,7 @@ app.use('/api/treinos', treinoRoutes);
 app.use('/api/exercicios', exercicioRoutes);
 app.use('/api/sessions', sessionsRoutes);
 app.use('/api/pastas/treinos', pastaRoutes);
-app.use('/api/aluno', alunoApiRoutes); // <<< UMA LINHA PARA TODAS AS ROTAS DE ALUNO
+app.use('/api/aluno', alunoApiRoutes); // Registra TODAS as rotas de aluno/gerenciar
 
 app.use(errorHandler);
 
