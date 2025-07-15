@@ -7,19 +7,21 @@
     "paths": {
       "@shared/*": ["../shared/*"]
     },
-    // Adicionando de volta a linha que lê as definições de tipo personalizadas
     "typeRoots": [
       "./node_modules/@types",
       "../shared/types"
     ],
     "outDir": "./dist",
     "rootDir": "./",
-    "esModuleInterop": true,
     "strict": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
+  "references": [
+    { "path": "../shared" }
+  ]
 }
