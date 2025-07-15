@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RotinaViewModal from "@/components/dialogs/RotinaViewModal";
 import PastaFormModal, { PastaExistente } from "@/components/dialogs/PastaFormModal";
 import { Badge } from "@/components/ui/badge";
+import VideoPlayerModal from "@/components/dialogs/VideoPlayerModal"; // --- NOVA IMPORTAÇÃO ---
 
 export interface Pasta { _id: string; nome: string; ordem?: number; }
 
@@ -33,6 +34,7 @@ export default function TreinosPage() {
     const [pastaParaEditar, setPastaParaEditar] = useState<PastaExistente | null>(null);
     const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
     const [itemParaExcluir, setItemParaExcluir] = useState<{ id: string; nome: string; tipo: 'rotina' | 'pasta' } | null>(null);
+    const [videoUrlToPlay, setVideoUrlToPlay] = useState<string | null>(null); // --- NOVO ESTADO PARA O VÍDEO ---
     
     const queryClient = useQueryClient();
     const { toast } = useToast();
@@ -91,11 +93,15 @@ export default function TreinosPage() {
         moveRotinaMutation.mutate({ rotinaId, pastaId: null });
     };
 
-    // --- FUNÇÃO DE CALLBACK PARA O MODAL ---
     const handlePastaSuccess = () => {
         queryClient.invalidateQueries({ queryKey: ["/api/pastas/treinos"] });
         setIsPastaModalOpen(false);
         setPastaParaEditar(null);
+    };
+
+    // --- NOVO HANDLER PARA O VÍDEO ---
+    const handlePlayVideo = (url: string) => {
+        setVideoUrlToPlay(url);
     };
 
     if (isLoadingRotinas || isLoadingPastas) return <LoadingSpinner text="Carregando dados..." />;
@@ -146,18 +152,13 @@ export default function TreinosPage() {
             {aba === 'individuais' && (<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">{rotinasIndividuais.map(rotina => {const aluno = alunos.find(a => a._id === (typeof rotina.alunoId === 'string' ? rotina.alunoId : rotina.alunoId?._id)); return (<RotinaCard key={rotina._id} rotina={rotina} pastas={[]} alunoNome={aluno?.nome} {...cardHandlers} />)})}</div>)}
             
             <RotinaFormModal open={isRotinaModalOpen} onClose={() => setIsRotinaModalOpen(false)} onSuccess={() => {}} alunos={alunos} rotinaParaEditar={rotinaParaEditar} />
-            <RotinaViewModal isOpen={isViewModalOpen} onClose={() => setIsViewModalOpen(false)} rotina={rotinaParaVisualizar} onEdit={handleOpenEditModal} onAssign={handleAssignClick} />
+            <RotinaViewModal isOpen={isViewModalOpen} onClose={() => setIsViewModalOpen(false)} rotina={rotinaParaVisualizar} onEdit={handleOpenEditModal} onAssign={handleAssignClick} onPlayVideo={handlePlayVideo} />
             {isAssociarModeloModalOpen && rotinaModeloParaAssociar && <AssociarModeloAlunoModal isOpen={isAssociarModeloModalOpen} onClose={() => setIsAssociarModeloModalOpen(false)} fichaModeloId={rotinaModeloParaAssociar.id} fichaModeloTitulo={rotinaModeloParaAssociar.titulo}/>}
-            
-            {/* CORREÇÃO: Passando a função de callback necessária para o modal */}
-            <PastaFormModal 
-                isOpen={isPastaModalOpen} 
-                onClose={() => {setIsPastaModalOpen(false); setPastaParaEditar(null);}} 
-                onSuccessCallback={handlePastaSuccess} 
-                initialData={pastaParaEditar} 
-            />
-
+            <PastaFormModal isOpen={isPastaModalOpen} onClose={() => {setIsPastaModalOpen(false); setPastaParaEditar(null);}} onSuccessCallback={handlePastaSuccess} initialData={pastaParaEditar} />
             <AlertDialog open={isDeleteAlertOpen} onOpenChange={(open) => !open && setIsDeleteAlertOpen(false)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle><AlertDialogDescription>Tem certeza que deseja excluir "{itemParaExcluir?.nome}"?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleConfirmDelete} disabled={deleteMutation.isPending} className="bg-red-600 hover:bg-red-700">Confirmar</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+            
+            {/* --- MODAL DE VÍDEO RENDERIZADO AQUI --- */}
+            <VideoPlayerModal videoUrl={videoUrlToPlay} onClose={() => setVideoUrlToPlay(null)} />
         </div>
     );
 }

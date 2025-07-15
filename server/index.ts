@@ -8,27 +8,29 @@ import cors, { CorsOptions } from 'cors';
 
 // Importação das rotas
 import authRoutes from './src/routes/auth';
-import convitePublicRoutes from './src/routes/convitePublicRoutes'; // Rota pública
+import convitePublicRoutes from './src/routes/convitePublicRoutes';
+import conviteAlunoPublicRoutes from './src/routes/conviteAlunoPublicRoutes';
 import dashboardRoutes from './src/routes/dashboardGeralRoutes';
-import alunoRoutes from './src/routes/alunos';
+// import alunoRoutes from './src/routes/alunos'; // <<< REMOVIDO
 import treinoRoutes from './src/routes/treinos';
 import exercicioRoutes from './src/routes/exercicios';
 import sessionsRoutes from './src/routes/sessionsRoutes';
 import pastaRoutes from './src/routes/pastasTreinos';
-import alunoApiRoutes from './src/routes/alunoApiRoutes';
+import alunoApiRoutes from './src/routes/alunoApiRoutes'; // <<< AGORA É A ÚNICA FONTE
 import adminRoutes from './src/routes/adminRoutes';
 
 // Importação dos middlewares
 import { authenticateToken } from './middlewares/authenticateToken';
 import { authorizeAdmin } from './middlewares/authorizeAdmin';
+import { errorHandler } from './middlewares/errorHandler';
 
 const app = express();
 
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:4173',
-  process.env.FRONTEND_URL
-].filter(Boolean);
+  process.env.FRONTEND_URL,
+].filter(Boolean) as string[];
 
 const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
@@ -56,36 +58,22 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('Conectado ao MongoDB com sucesso!'))
   .catch(err => console.error('Falha ao conectar com o MongoDB:', err));
 
-
-// =======================================================
-// --- ESTRUTURA DE ROTAS CORRETA E FINAL ---
-// =======================================================
-
-// 1. Rotas Públicas (NÃO precisam de token)
-//    Qualquer rota registrada aqui será acessível sem login.
+// --- ESTRUTURA DE ROTAS SIMPLIFICADA E CORRIGIDA ---
+app.use('/api/public/convites', convitePublicRoutes); 
+app.use('/api/public/convite-aluno', conviteAlunoPublicRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/public/convites', convitePublicRoutes); // <-- Registrada ANTES do middleware de autenticação.
 
-// 2. Middleware de Autenticação Global
-//    A partir deste ponto, TODAS as rotas abaixo exigirão um token JWT válido.
 app.use(authenticateToken);
 
-// 3. Rotas Protegidas
-
-// Rotas de Admin (exigem token E permissão de admin)
 app.use('/api/admin', authorizeAdmin, adminRoutes);
-
-// Rotas de Personal Trainer (exigem token)
 app.use('/api/dashboard/geral', dashboardRoutes);
-app.use('/api/alunos', alunoRoutes);
 app.use('/api/treinos', treinoRoutes);
 app.use('/api/exercicios', exercicioRoutes);
 app.use('/api/sessions', sessionsRoutes);
 app.use('/api/pastas/treinos', pastaRoutes);
+app.use('/api/aluno', alunoApiRoutes); // <<< UMA LINHA PARA TODAS AS ROTAS DE ALUNO
 
-// Rotas Específicas de Aluno (exigem um tipo específico de token, tratado internamente)
-app.use('/api/aluno', alunoApiRoutes);
-
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

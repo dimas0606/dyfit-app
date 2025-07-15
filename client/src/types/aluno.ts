@@ -9,8 +9,8 @@ export interface Aluno {
     weight: number;
     height: number;
     startDate: string;
-    status: string;
+    // --- CORREÇÃO AQUI ---
+    status: 'active' | 'inactive';
     notes?: string;
-    trainerId: number;
+    trainerId: string; // ID do PersonalTrainer
   }
-  

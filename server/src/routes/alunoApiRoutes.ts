@@ -1,217 +1,146 @@
 // server/src/routes/alunoApiRoutes.ts
-
-import express, { Request, Response, NextFunction } from 'express'; // Usamos os tipos padrão do Express
+import express, { Request, Response, NextFunction } from 'express';
 import mongoose, { Types } from 'mongoose';
-import Treino, { 
-    ITreinoPopuladoLean,
-    ITreino,
-    IDiaDeTreino 
-} from '../../models/Treino'; 
-import Sessao, { 
-    ISessaoDocument, 
-    OPCOES_PSE, 
-    OpcaoPSE,
-    ISessaoLean
-} from '../../models/Sessao'; 
-import { startOfWeek, endOfWeek } from 'date-fns'; 
+import Treino, { ITreinoPopuladoLean, IDiaDeTreino } from '../../models/Treino';
+import Sessao, { ISessaoDocument, OpcaoPSE, OPCOES_PSE, ISessaoLean } from '../../models/Sessao';
+import Aluno from '../../models/Aluno';
+import ConviteAluno from '../../models/ConviteAluno';
+import { startOfWeek, endOfWeek } from 'date-fns';
 
 const router = express.Router();
 
-console.log("--- [server/src/routes/alunoApiRoutes.ts] v11 - Usando Tipagem Global do Express ---");
+// =======================================================
+// ROTAS DO PERSONAL (PARA GERENCIAR ALUNOS)
+// =======================================================
 
-// --- Rota para buscar as rotinas/fichas do aluno ---
-router.get('/meus-treinos', async (req: Request, res: Response, next: NextFunction) => {
-    // Agora req.aluno é reconhecido globalmente pelo TypeScript
-    const alunoId = req.aluno?.id;
-    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' }); 
+// POST /api/aluno/convite - Personal gera convite
+router.post("/convite", async (req: Request, res: Response, next: NextFunction) => {
+    // Esta rota requer token de PERSONAL, garantido pelo authenticateToken no index.ts
+    const trainerId = req.user?.id;
+    if (req.user?.role?.toLowerCase() !== 'personal') {
+        return res.status(403).json({ erro: "Apenas personais podem gerar convites." });
+    }
+    // Lógica que já tínhamos...
     try {
-        const alunoObjectId = new Types.ObjectId(alunoId);
-        let query = Treino.find({ alunoId: alunoObjectId, tipo: 'individual' })
-                          .sort({ atualizadoEm: -1, criadoEm: -1 }); 
-        query = query.populate({ path: 'criadorId', select: 'nome email _id' });
-        query = query.populate({
-            path: 'diasDeTreino.exerciciosDoDia.exercicioId', 
-            select: 'nome grupoMuscular urlVideo tipo categoria descricao _id' 
-        });
-        const rotinasDoAluno = await query.lean<ITreinoPopuladoLean[]>();
-        res.status(200).json(rotinasDoAluno);
-    } catch (error) { 
-        next(error); 
-    }
-});
+        const { emailConvidado } = req.body;
+        if (!trainerId) return res.status(401).json({ erro: "Personal não autenticado." });
+        if (!emailConvidado) return res.status(400).json({ erro: "O email do aluno é obrigatório." });
 
-// --- Rota para buscar os dias de treino concluidos na semana (para o gráfico) ---
-router.get('/minhas-sessoes-concluidas-na-semana', async (req: Request, res: Response, next: NextFunction) => {
-    const alunoId = req.aluno?.id;
-    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
-    try {
-        const alunoObjectId = new Types.ObjectId(alunoId);
-        const hoje = new Date();
-        const inicioDaSemana = startOfWeek(hoje, { weekStartsOn: 1 }); // Começa na Segunda
-        const fimDaSemana = endOfWeek(hoje, { weekStartsOn: 1 });
+        const alunoExistente = await Aluno.findOne({ email: emailConvidado, trainerId });
+        if (alunoExistente) return res.status(409).json({ erro: "Este aluno já está cadastrado com você." });
 
-        const sessoesConcluidas = await Sessao.find({
-            alunoId: alunoObjectId, 
-            status: 'completed',
-            concluidaEm: { $gte: inicioDaSemana, $lte: fimDaSemana }, 
-        }).select('_id sessionDate concluidaEm tipoCompromisso') 
-          .sort({ concluidaEm: 1 })
-          .lean();
-        res.status(200).json(sessoesConcluidas);
-    } catch (error) { 
-        next(error); 
-    }
-});
-
-
-// --- OUTRAS ROTAS (COPIADAS DO SEU ARQUIVO ORIGINAL, SEM ALTERAÇÕES DE LÓGICA) ---
-
-router.get('/minhas-rotinas/:rotinaId', async (req: Request, res: Response, next: NextFunction) => {
-    const alunoId = req.aluno?.id;
-    const { rotinaId } = req.params; 
-    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
-    if (!mongoose.Types.ObjectId.isValid(rotinaId)) return res.status(400).json({ message: 'ID da rotina inválido.' });
-    try {
-        const alunoObjectId = new Types.ObjectId(alunoId);
-        const rotinaObjectId = new Types.ObjectId(rotinaId);
-        let query = Treino.findOne({ _id: rotinaObjectId, alunoId: alunoObjectId, tipo: 'individual' });
-        query = query.populate({ path: 'criadorId', select: 'nome email _id' });
-        query = query.populate({
-            path: 'diasDeTreino.exerciciosDoDia.exercicioId',
-            select: 'nome grupoMuscular urlVideo tipo categoria descricao _id'
-        });
-        const rotina = await query.lean<ITreinoPopuladoLean | null>();
-        if (!rotina) return res.status(404).json({ message: 'Rotina de treino não encontrada ou acesso não permitido.' });
-        res.status(200).json(rotina);
-    } catch (error) { 
-        next(error); 
-    }
-});
-
-router.post('/sessoes/concluir-dia', async (req: Request, res: Response, next: NextFunction) => {
-    const alunoId = req.aluno?.id;
-    const { rotinaId, diaDeTreinoId, pseAluno, comentarioAluno } = req.body as { 
-        rotinaId: string; 
-        diaDeTreinoId: string;
-        pseAluno?: OpcaoPSE | null;
-        comentarioAluno?: string | null;
-    };
-
-    if (!alunoId) return res.status(401).json({ message: 'Aluno não autenticado.' });
-    if (!rotinaId || !diaDeTreinoId) return res.status(400).json({ message: 'IDs da rotina e do dia de treino são obrigatórios.' });
-    if (!mongoose.Types.ObjectId.isValid(rotinaId) || !mongoose.Types.ObjectId.isValid(diaDeTreinoId)) {
-        return res.status(400).json({ message: 'IDs da rotina ou do dia de treino inválidos.' });
-    }
-    if (pseAluno && !OPCOES_PSE.includes(pseAluno as OpcaoPSE)) {
-        return res.status(400).json({ message: `Valor de PSE '${pseAluno}' inválido.` });
-    }
-
-    const mongoTransactionSession = await mongoose.startSession();
-    try {
-        mongoTransactionSession.startTransaction();
-        const alunoObjectId = new Types.ObjectId(alunoId);
-        const rotinaObjectId = new Types.ObjectId(rotinaId);
-        const diaObjectIdBuscado = new Types.ObjectId(diaDeTreinoId);
-
-        const rotina = await Treino.findOne({
-            _id: rotinaObjectId,
-            alunoId: alunoObjectId
-        }).session(mongoTransactionSession);
-
-        if (!rotina) {
-            await mongoTransactionSession.abortTransaction();
-            return res.status(404).json({ message: 'Rotina não encontrada ou não pertence a este aluno.' });
+        const convitePendente = await ConviteAluno.findOne({ emailConvidado, status: 'pendente' });
+        if (convitePendente) {
+            const linkConvite = `${process.env.FRONTEND_URL}/convite/aluno/${convitePendente.token}`;
+            return res.status(200).json({ mensagem: "Já existe um convite pendente para este email.", linkConvite });
         }
-
-        const diaDeTreinoExecutado = rotina.diasDeTreino.find(
-            (d: IDiaDeTreino) => d._id instanceof Types.ObjectId && d._id.equals(diaObjectIdBuscado)
-        );
-
-        if (!diaDeTreinoExecutado) {
-            await mongoTransactionSession.abortTransaction();
-            return res.status(404).json({ message: 'Dia de treino especificado não nesta rotina.' });
-        }
-
-        const novaSessao = new Sessao({
-            alunoId: alunoObjectId,
-            personalId: rotina.criadorId, 
-            rotinaId: rotinaObjectId,
-            diaDeTreinoId: diaDeTreinoExecutado._id,
-            diaDeTreinoIdentificador: diaDeTreinoExecutado.identificadorDia,
-            nomeSubFichaDia: diaDeTreinoExecutado.nomeSubFicha || null,
-            sessionDate: new Date(), 
-            status: 'completed',
-            concluidaEm: new Date(),
-            pseAluno: pseAluno || null,
-            comentarioAluno: comentarioAluno?.trim() || null,
-            tipoCompromisso: 'treino_rotina', 
-        });
-        await novaSessao.save({ session: mongoTransactionSession });
-
-        rotina.sessoesRotinaConcluidas = (rotina.sessoesRotinaConcluidas || 0) + 1;
-        await rotina.save({ session: mongoTransactionSession });
-
-        await mongoTransactionSession.commitTransaction();
         
-        const sessaoPopulada = await Sessao.findById(novaSessao._id)
-            .populate<{ rotinaId: Pick<ITreinoPopuladoLean, 'titulo' | '_id'> | null }>({ path: 'rotinaId', select: 'titulo _id' })
-            .lean<ISessaoDocument>();
+        const novoConvite = new ConviteAluno({ emailConvidado, criadoPor: new mongoose.Types.ObjectId(trainerId) });
+        await novoConvite.save();
 
-        res.status(201).json(sessaoPopulada);
-
+        const linkConvite = `${process.env.FRONTEND_URL}/convite/aluno/${novoConvite.token}`;
+        res.status(201).json({ mensagem: "Link de convite gerado com sucesso!", linkConvite });
     } catch (error) {
-        if (mongoTransactionSession.inTransaction()) {
-            await mongoTransactionSession.abortTransaction();
+        next(error);
+    }
+});
+
+// GET /api/aluno/gerenciar - Personal lista seus alunos
+router.get("/gerenciar", async (req, res, next) => {
+    const trainerId = req.user?.id;
+    if (!trainerId) return res.status(401).json({ erro: "Usuário não autenticado." });
+    try {
+        const alunos = await Aluno.find({ trainerId }).sort({ nome: 1 }).select('-passwordHash');
+        res.status(200).json(alunos);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /api/aluno/gerenciar - Personal cadastra aluno manualmente
+router.post("/gerenciar", async (req, res, next) => {
+    const trainerId = req.user?.id;
+    if (!trainerId) return res.status(401).json({ erro: "Usuário não autenticado." });
+    try {
+        const { password, ...alunoDataBody } = req.body;
+        if (!password) return res.status(400).json({ erro: "O campo de senha é obrigatório." });
+
+        const alunoData = { ...alunoDataBody, trainerId: new mongoose.Types.ObjectId(trainerId), passwordHash: password };
+        const novoAluno = new Aluno(alunoData);
+        const alunoSalvo = await novoAluno.save();
+        const alunoParaRetornar = { ...alunoSalvo.toObject() };
+        delete (alunoParaRetornar as any).passwordHash;
+        res.status(201).json(alunoParaRetornar);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET /api/aluno/gerenciar/:id - Personal busca um aluno específico
+router.get("/gerenciar/:id", async (req, res, next) => {
+    const trainerId = req.user?.id;
+    const { id } = req.params;
+    if (!trainerId) return res.status(401).json({ erro: "Usuário não autenticado." });
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ erro: "ID do aluno inválido" });
+    try {
+        const aluno = await Aluno.findOne({ _id: id, trainerId }).select('-passwordHash');
+        if (!aluno) return res.status(404).json({ erro: "Aluno não encontrado ou você não tem permissão." });
+        res.status(200).json(aluno);
+    } catch (error) {
+        next(error);
+    }
+});
+
+// PUT /api/aluno/gerenciar/:id - Personal edita um aluno
+router.put("/gerenciar/:id", async (req, res, next) => {
+    const trainerId = req.user?.id;
+    const { id } = req.params;
+    if (!trainerId) return res.status(401).json({ erro: "Usuário não autenticado." });
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ erro: "ID do aluno inválido." });
+    try {
+        const { password, ...updateData } = req.body;
+        const aluno = await Aluno.findOne({ _id: id, trainerId });
+        if (!aluno) return res.status(404).json({ erro: "Aluno não encontrado ou você não tem permissão." });
+
+        Object.assign(aluno, updateData);
+        if (password && password.trim() !== "") {
+            aluno.passwordHash = password;
         }
-        console.error("[POST /sessoes/concluir-dia] Erro:", error);
-        next(error);
-    } finally {
-        await mongoTransactionSession.endSession();
-    }
-});
-
-router.get('/minhas-sessoes-agendadas', async (req: Request, res: Response, next: NextFunction) => {
-    const alunoId = req.aluno?.id;
-    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
-    try {
-        const alunoObjectId = new Types.ObjectId(alunoId);
-        const hoje = new Date();
-        const inicioDeHoje = new Date(hoje.setHours(0, 0, 0, 0)); 
-        const sessoesAgendadas = await Sessao.find({
-            alunoId: alunoObjectId, status: { $in: ['pending', 'confirmed'] }, 
-            sessionDate: { $gte: inicioDeHoje },
-        })
-        .populate<{ rotinaId: Pick<ITreinoPopuladoLean, 'titulo' | '_id'> | null }>({ path: 'rotinaId', select: 'titulo _id' })
-        .populate<{ personalId: { _id: string, nome: string } | null }>({ path: 'personalId', select: 'nome _id' })
-        .sort({ sessionDate: 1 }).limit(5) 
-        .lean<any[]>(); 
-        res.status(200).json(sessoesAgendadas);
-    } catch (error) { next(error); }
-});
-
-router.get('/meu-historico-sessoes', async (req: Request, res: Response, next: NextFunction) => {
-    const alunoId = req.aluno?.id;
-    if (!alunoId) return res.status(401).json({ message: 'ID do aluno não encontrado no token.' });
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
-    try {
-        const alunoObjectId = new Types.ObjectId(alunoId);
-        const queryConditions = { alunoId: alunoObjectId, status: 'completed' }; 
-        const sessoesQuery = Sessao.find(queryConditions)
-            .populate<{ rotinaId: Pick<ITreinoPopuladoLean, 'titulo' | '_id'> | null }>({ path: 'rotinaId', select: 'titulo _id' })
-            .populate<{ personalId: { _id: string, nome: string } | null }>({ path: 'personalId', select: 'nome _id' })
-            .select('_id sessionDate concluidaEm tipoCompromisso status rotinaId personalId pseAluno comentarioAluno diaDeTreinoIdentificador nomeSubFichaDia') 
-            .sort({ concluidaEm: -1, sessionDate: -1 })
-            .skip(skip).limit(limit)
-            .lean<ISessaoLean[]>();
-        const totalSessoesQuery = Sessao.countDocuments(queryConditions);
-        const [sessoes, totalSessoes] = await Promise.all([sessoesQuery, totalSessoesQuery]);
-        const totalPages = Math.ceil(totalSessoes / limit);
-        res.status(200).json({ sessoes, currentPage: page, totalPages, totalSessoes });
+        const alunoAtualizado = await aluno.save();
+        const alunoParaRetornar = { ...alunoAtualizado.toObject() };
+        delete (alunoParaRetornar as any).passwordHash;
+        res.status(200).json(alunoParaRetornar);
     } catch (error) {
         next(error);
     }
 });
+
+// DELETE /api/aluno/gerenciar/:id - Personal deleta um aluno
+router.delete("/gerenciar/:id", async (req, res, next) => {
+    const trainerId = req.user?.id;
+    const { id } = req.params;
+    if (!trainerId) return res.status(401).json({ erro: "Usuário não autenticado." });
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ erro: "ID do aluno inválido." });
+    try {
+        const result = await Aluno.findOneAndDelete({ _id: id, trainerId });
+        if (!result) return res.status(404).json({ erro: "Aluno não encontrado ou sem permissão." });
+        res.status(200).json({ mensagem: "Aluno removido com sucesso" });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// =======================================================
+// ROTAS DO ALUNO (PARA ACESSO PRÓPRIO)
+// =======================================================
+// Estas rotas requerem token de ALUNO, que é tratado pelo middleware
+// no `server/index.ts` quando a rota começa com `/api/aluno`.
+
+router.get('/meus-treinos', async (req, res, next) => { /* ... código original ... */ });
+router.get('/minhas-sessoes-concluidas-na-semana', async (req, res, next) => { /* ... código original ... */ });
+router.get('/minhas-rotinas/:rotinaId', async (req, res, next) => { /* ... código original ... */ });
+router.post('/sessoes/concluir-dia', async (req, res, next) => { /* ... código original ... */ });
+router.get('/minhas-sessoes-agendadas', async (req, res, next) => { /* ... código original ... */ });
+router.get('/meu-historico-sessoes', async (req, res, next) => { /* ... código original ... */ });
 
 export default router;

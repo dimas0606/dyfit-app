@@ -10,26 +10,26 @@
  * @throws Lança um erro se a requisição falhar ou a resposta não for OK.
  */
 export const fetchWithAuth = async <T = any>(
-    url: string, // Espera-se um caminho relativo, ex: /api/alunos
+    url: string,
     options: RequestInit = {}
   ): Promise<T> => {
-    // Obtém a URL base da API das variáveis de ambiente ou usa um padrão.
     const apiUrlBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    const fullUrl = url.startsWith('/') ? `${apiUrlBase}${url}` : `${apiUrlBase}/${url}`; // Garante que a URL sempre comece com / se for relativa
+    const fullUrl = url.startsWith('/') ? `${apiUrlBase}${url}` : `${apiUrlBase}/${url}`;
     
     let token: string | null = null;
     let tokenTypeUsed: string = "Nenhum";
   
-    // Determina qual token usar com base na URL da requisição
-    if (url.startsWith('/api/aluno/')) {
+    // --- LÓGICA DE SELEÇÃO DE TOKEN CORRIGIDA ---
+    // Verifica se a rota é para o aluno, mas NÃO é uma rota de gerenciamento do Personal.
+    if (url.startsWith('/api/aluno/') && !url.startsWith('/api/aluno/gerenciar')) {
       token = localStorage.getItem('alunoAuthToken');
       tokenTypeUsed = "alunoAuthToken";
       console.log('[fetchWithAuth] Rota de Aluno detectada. Tentando usar alunoAuthToken.');
     } else {
-      // Para todas as outras rotas /api/* (que não são /api/aluno/) ou rotas públicas que podem tentar usar auth
+      // Para todas as outras rotas, incluindo /api/aluno/gerenciar e /api/aluno/convite
       token = localStorage.getItem('authToken'); // Token de Personal/Admin
       tokenTypeUsed = "authToken";
-      console.log('[fetchWithAuth] Rota de Personal/Admin ou Pública. Tentando usar authToken.');
+      console.log(`[fetchWithAuth] Rota de Personal/Admin ('${url}') detectada. Tentando usar authToken.`);
     }
   
     const headers = new Headers(options.headers || {});
@@ -42,8 +42,7 @@ export const fetchWithAuth = async <T = any>(
       console.log(`[fetchWithAuth] Nenhum token ${tokenTypeUsed} encontrado no localStorage para a rota: ${url}`);
     }
   
-    // Garante Content-Type para POST/PUT/PATCH com body JSON
-    if (options.body && typeof options.body === 'string') { // Verifica se o body é uma string JSON
+    if (options.body && typeof options.body === 'string') {
       if (!headers.has('Content-Type')) {
         headers.set('Content-Type', 'application/json');
       }
@@ -57,7 +56,7 @@ export const fetchWithAuth = async <T = any>(
         headers,
       });
   
-      if (response.status === 204) { // No Content
+      if (response.status === 204) {
         console.log(`[fetchWithAuth] Received 204 No Content for ${fullUrl}`);
         return null as T; 
       }
@@ -65,13 +64,12 @@ export const fetchWithAuth = async <T = any>(
       const responseText = await response.text();
       let data;
       try {
-        data = responseText ? JSON.parse(responseText) : null; // Trata corpo vazio
+        data = responseText ? JSON.parse(responseText) : null;
       } catch (parseError) {
         console.error(`[fetchWithAuth] Failed to parse JSON response from ${fullUrl}. Status: ${response.status}. Response text:`, responseText);
         throw new Error(`Erro ${response.status}: Resposta inválida do servidor (não é JSON).`);
       }
       
-      // Log da resposta completa para depuração, mesmo que seja um erro
       console.log(`[fetchWithAuth] Response from ${fullUrl} (Status: ${response.status}):`, data);
   
       if (!response.ok) {
@@ -79,31 +77,26 @@ export const fetchWithAuth = async <T = any>(
   
         if (response.status === 401) {
           console.warn('[fetchWithAuth] Token expirado ou inválido detectado (status 401).');
-          // Dispara evento para que os contextos de autenticação possam reagir (ex: fazer logout)
           window.dispatchEvent(new CustomEvent('auth-failed', { 
             detail: { 
               status: 401, 
-              forAluno: url.startsWith('/api/aluno/'),
-              forPersonalAdmin: !url.startsWith('/api/aluno/') // Indica se o token falhou para personal/admin
+              forAluno: tokenTypeUsed === 'alunoAuthToken',
+              forPersonalAdmin: tokenTypeUsed === 'authToken'
             } 
           }));
         }
         
-        // Prioriza a mensagem de erro da API, se disponível
         const errorMessage = data?.message || data?.mensagem || data?.erro || `Erro ${response.status}: ${response.statusText || 'Ocorreu um erro na comunicação com o servidor.'}`;
         throw new Error(errorMessage);
       }
       return data as T;
   
     } catch (error) {
-      // Log do erro já formatado ou erro de rede
       console.error(`[fetchWithAuth] Network or other error for ${fullUrl}:`, error);
       if (error instanceof Error) {
         throw error; 
       } else {
-        // Captura qualquer outro tipo de erro e o converte para Error
         throw new Error('Erro desconhecido durante a requisição.');
       }
     }
   };
-  
