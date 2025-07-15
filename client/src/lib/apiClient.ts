@@ -1,14 +1,5 @@
 // client/src/lib/apiClient.ts
 
-/**
- * Realiza uma requisição fetch adicionando automaticamente o token JWT apropriado
- * (aluno ou personal/admin) do localStorage e tratando erros comuns.
- *
- * @param url O caminho da API (ex: '/api/alunos' ou '/api/aluno/meus-treinos').
- * @param options Opções adicionais do fetch (method, body, etc.).
- * @returns Uma Promise com os dados da resposta em JSON.
- * @throws Lança um erro se a requisição falhar ou a resposta não for OK.
- */
 export const fetchWithAuth = async <T = any>(
     url: string,
     options: RequestInit = {}
@@ -19,14 +10,18 @@ export const fetchWithAuth = async <T = any>(
     let token: string | null = null;
     let tokenTypeUsed: string = "Nenhum";
   
-    // --- LÓGICA DE SELEÇÃO DE TOKEN CORRIGIDA ---
-    // Verifica se a rota é para o aluno, mas NÃO é uma rota de gerenciamento do Personal.
-    if (url.startsWith('/api/aluno/') && !url.startsWith('/api/aluno/gerenciar')) {
+    // --- LÓGICA DE SELEÇÃO DE TOKEN CORRIGIDA E FINAL ---
+    // A rota é para um ALUNO se começar com /api/aluno/ E NÃO for /gerenciar E NÃO for /convite
+    if (
+        url.startsWith('/api/aluno/') && 
+        !url.startsWith('/api/aluno/gerenciar') &&
+        !url.startsWith('/api/aluno/convite')
+    ) {
       token = localStorage.getItem('alunoAuthToken');
       tokenTypeUsed = "alunoAuthToken";
       console.log('[fetchWithAuth] Rota de Aluno detectada. Tentando usar alunoAuthToken.');
     } else {
-      // Para todas as outras rotas, incluindo /api/aluno/gerenciar e /api/aluno/convite
+      // Para todas as outras rotas, incluindo as de gerenciamento e convite.
       token = localStorage.getItem('authToken'); // Token de Personal/Admin
       tokenTypeUsed = "authToken";
       console.log(`[fetchWithAuth] Rota de Personal/Admin ('${url}') detectada. Tentando usar authToken.`);
@@ -57,7 +52,6 @@ export const fetchWithAuth = async <T = any>(
       });
   
       if (response.status === 204) {
-        console.log(`[fetchWithAuth] Received 204 No Content for ${fullUrl}`);
         return null as T; 
       }
   
@@ -66,7 +60,6 @@ export const fetchWithAuth = async <T = any>(
       try {
         data = responseText ? JSON.parse(responseText) : null;
       } catch (parseError) {
-        console.error(`[fetchWithAuth] Failed to parse JSON response from ${fullUrl}. Status: ${response.status}. Response text:`, responseText);
         throw new Error(`Erro ${response.status}: Resposta inválida do servidor (não é JSON).`);
       }
       
@@ -76,7 +69,6 @@ export const fetchWithAuth = async <T = any>(
         console.error(`[fetchWithAuth] API Error [${response.status} - ${response.statusText}] for ${fullUrl}:`, data);
   
         if (response.status === 401) {
-          console.warn('[fetchWithAuth] Token expirado ou inválido detectado (status 401).');
           window.dispatchEvent(new CustomEvent('auth-failed', { 
             detail: { 
               status: 401, 
@@ -86,7 +78,7 @@ export const fetchWithAuth = async <T = any>(
           }));
         }
         
-        const errorMessage = data?.message || data?.mensagem || data?.erro || `Erro ${response.status}: ${response.statusText || 'Ocorreu um erro na comunicação com o servidor.'}`;
+        const errorMessage = data?.message || data?.mensagem || data?.erro || `Erro ${response.status}: ${response.statusText || 'Ocorreu um erro na comunicação.'}`;
         throw new Error(errorMessage);
       }
       return data as T;

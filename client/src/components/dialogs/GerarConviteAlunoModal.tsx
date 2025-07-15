@@ -15,7 +15,6 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { Loader2, Copy, Check } from 'lucide-react';
 
-// Schema de validação para o formulário
 const formSchema = z.object({
   email: z.string().email("Por favor, insira um e-mail válido."),
 });
@@ -38,10 +37,9 @@ const GerarConviteAlunoModal: React.FC<GerarConviteAlunoModalProps> = ({ isOpen,
     defaultValues: { email: "" },
   });
 
-  // Efeito para resetar o modal ao ser fechado
   useEffect(() => {
     if (!isOpen) {
-      setTimeout(() => { // Pequeno delay para a animação de fechar
+      setTimeout(() => {
         form.reset();
         setView('form');
         setInviteLink(null);
@@ -51,7 +49,8 @@ const GerarConviteAlunoModal: React.FC<GerarConviteAlunoModalProps> = ({ isOpen,
   }, [isOpen, form]);
 
   const mutation = useMutation({
-    mutationFn: (data: FormValues) => apiRequest<{ linkConvite: string }>("POST", "/api/alunos/convite", { emailConvidado: data.email }),
+    // <<< CORREÇÃO AQUI: Atualizado o caminho da API para o correto >>>
+    mutationFn: (data: FormValues) => apiRequest<{ linkConvite: string }>("POST", "/api/aluno/convite", { emailConvidado: data.email }),
     onSuccess: (data) => {
       setInviteLink(data.linkConvite);
       setView('success');
@@ -74,7 +73,7 @@ const GerarConviteAlunoModal: React.FC<GerarConviteAlunoModalProps> = ({ isOpen,
       navigator.clipboard.writeText(inviteLink).then(() => {
         setIsCopied(true);
         toast({ title: "Sucesso!", description: "Link copiado para a área de transferência." });
-        setTimeout(() => setIsCopied(false), 2000); // Resetar o ícone de 'check'
+        setTimeout(() => setIsCopied(false), 2000);
       });
     }
   };
