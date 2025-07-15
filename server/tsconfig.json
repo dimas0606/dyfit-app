@@ -1,17 +1,25 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS", // Formato mais compatível para Node.js no Render
-    "moduleResolution": "node",
-    "outDir": "./dist", // Onde os arquivos compilados irão
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["../shared/*"]
+    },
+    // Adicionando de volta a linha que lê as definições de tipo personalizadas
+    "typeRoots": [
+      "./node_modules/@types",
+      "../shared/types"
+    ],
+    "outDir": "./dist",
     "rootDir": "./",
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "typeRoots": ["./node_modules/@types", "../shared/types"] // Aponta para a pasta de tipos compartilhados
+    "resolveJsonModule": true
   },
-  "include": ["**/*.ts"], // Inclui todos os arquivos .ts do servidor
+  "include": ["**/*.ts"],
   "exclude": ["node_modules"]
 }
